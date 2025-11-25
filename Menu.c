@@ -4,20 +4,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
 
-#define UINT32_F "%u"
-#define UINT64_F "%lu"
-#define STRING_F "%s"
-#define CHAR_F "%c"
-#define INT8_F "%hhd"
-#define UINT16_F "%hu"
-#define FLOAT_F "%.1f"
-#define LONG_F "%ld"
+#include "Menu.h"
+#include "error_handler.h"
 
 #define BASE_10 10
 
@@ -55,22 +48,6 @@ typedef enum ProccessElementsEnum {
   _COMMAND,
 } ProccessElementsEnum;
 
-typedef struct NewProccessElement {
-  pid_t pid;              //  int
-  char name[32];          // string
-  char user[16];          // string
-  int64_t priority;       // signed long
-  int64_t nice;           // signed long
-  uint64_t virtualmem;    // unsigned long
-  int64_t resident;       // signed long
-  uint64_t sharemem;      // unsigned
-  char state;             // char
-  float cpu;              // float
-  float mem;              // float
-  time_t time;            // long
-  char command_path[256]; // string
-} NewProccessElement;
-
 typedef struct ProccessProperties {
   char format[5];
   char order;
@@ -92,8 +69,6 @@ int GetUserFromUid(const pid_t uid, char user[16]) {
 int GetSharedMemSize(unsigned long *sharedmem, const pid_t process_id) {
   char path[256];
   FILE *file;
-  printw("I get to here finallyy!!");
-  refresh();
   snprintf(path, sizeof(path), "/proc/%d/statm", process_id);
   if ((file = fopen(path, "r")))
     fscanf(file, "%*d %*d %lu", sharedmem);
@@ -121,12 +96,20 @@ int GetProcessCPUusage(float *cpu_usage, const time_t utime, const time_t stime,
   return 0;
 }
 
-int GetProcessFullPath(const char *process_path, char exe_path[256]) {
-  const uint16_t buf_size = 128;
-  if (readlink(process_path, exe_path, buf_size))
+int GetProcessFullPath(const pid_t pid, char *exe_path) {
+  char process_path[CMD_PATH_SIZE];
+  snprintf(process_path, sizeof(process_path), "/proc/%d/exe", pid);
+  ssize_t len = readlink(process_path, exe_path, CMD_PATH_SIZE - 1);
+  exe_path[CMD_PATH_SIZE] = '\0';
+  if (len != -1) {
+    printw("path : %s exe path : %s broo\n", process_path, exe_path);
+    refresh();
+    sleep(5);
     return 0;
-  else
+  } else {
+    ERR_SET(ERR_READ_FILE);
     return -14;
+  }
   return 0;
 }
 
@@ -143,6 +126,8 @@ int GetProcessRAMusage(float *ram_usage, const pid_t pid,
   return 0;
 }
 
+/* this shit is for getting all the information about a process (ex. pid,
+ * ram_usage, ...)*/
 int GetProcessInfoFromFile(NewProccessElement *Process, pid_t pid) {
   pid_t process_uid;
   char path[120];
@@ -154,28 +139,39 @@ int GetProcessInfoFromFile(NewProccessElement *Process, pid_t pid) {
   snprintf(path, sizeof(path), "/proc/%d/stat", pid);
   FILE *pid_file;
   if ((pid_file = fopen(path, "r"))) {
-    fscanf(pid_file,
-           "%d %s %c %d %*d %*d %*d %*d %*d %*d %*d %*d %*d %lu %lu "
-           "%ld %ld %ld %ld %*d %*d %llu %lu %ld",
-           &Process->pid, Process->name, &Process->state, &process_uid, &utime,
-           &stime, &cutime, &cstime, &Process->priority, &Process->nice,
-           &starttime, &Process->virtualmem, &Process->resident);
-    Process->time = utime + stime;
-    GetUserFromUid(process_uid, Process->user);
-    GetSharedMemSize(&Process->sharemem, pid);
-    GetProcessFullPath(path, Process->command_path);
-    GetProcessCPUusage(&Process->cpu, utime, stime, cutime, cstime, starttime);
-    GetProcessRAMusage(&Process->mem, pid, Process->resident);
+    int throw = fscanf(
+        pid_file,
+        "%d %s %c %d %*d %*d %*d %*d %*d %*d %*d %*d %*d %lu %lu "
+        "%ld %ld %ld %ld %*d %*d %llu %lu %ld",
+        &Process->pid, Process->name, &Process->state, &process_uid, &utime,
+        &stime, &cutime, &cstime, &Process->priority, &Process->nice,
+        &starttime, &Process->virtualmem, &Process->resident);
+    if (throw != 0) {
+      Process->time = utime + stime;
+      GetUserFromUid(process_uid, Process->user);
+      GetSharedMemSize(&Process->sharemem, Process->pid);
+      GetProcessFullPath(Process->pid, Process->command_path);
+      GetProcessCPUusage(&Process->cpu, utime, stime, cutime, cstime,
+                         starttime);
+      GetProcessRAMusage(&Process->mem, Process->pid, Process->resident);
+    } else {
+      ERR_SET(ERR_SCAN_FILE);
+      return ERR_SCAN_FILE;
+    }
   } else {
-    perror("Error");
-    return -4;
+    ERR_SET(ERR_OPEN_FILE);
+    return ERR_OPEN_FILE;
   }
   fclose(pid_file);
   return 0;
 }
 
+/* this is for displaying the process in your shit screen, this is one of the
+ * reasons why GUI shouldn't exist */
 int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
                           NewProccessElement ProccessElement) {
+  /* an array that stores all the properties in one array so you could access
+   * easily anything about a process */
   ProccessProperties process[_COMMAND + 1] = {
       {UINT32_F, _PID, {.pid = ProccessElement.pid}},
       {STRING_F, _NAME},
@@ -190,20 +186,32 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
       {FLOAT_F, _MEM, {.mem = ProccessElement.mem}},
       {LONG_F, _TIME, {.time = ProccessElement.time}},
       {STRING_F, _COMMAND}};
-  strcpy(process[_NAME].process_info.name, ProccessElement.name);
-  strcpy(process[_USER].process_info.user, ProccessElement.user);
-  strcpy(process[_COMMAND].process_info.command_path,
-         ProccessElement.command_path);
-  printw(
-      "\n pid: %d name: %s user: %s pri: %ld ni: %ld virt: %lu res: %ld shr: "
-      "%lu s: %c cpu: %.1f mem: %.1f time: %ld cmd: %s",
-      ProccessElement.pid, ProccessElement.name, ProccessElement.user,
-      ProccessElement.priority, ProccessElement.nice,
-      ProccessElement.virtualmem, ProccessElement.resident,
-      ProccessElement.sharemem, ProccessElement.state, ProccessElement.cpu,
-      ProccessElement.mem, ProccessElement.time, ProccessElement.command_path);
+
+  strncpy(process[_NAME].process_info.name, ProccessElement.name,
+          NAME_SIZE - 1);
+  strncpy(process[_USER].process_info.user, ProccessElement.user,
+          USER_SIZE - 1);
+  strncpy(process[_COMMAND].process_info.command_path,
+          ProccessElement.command_path, CMD_PATH_SIZE);
+  // WARN: this only for testing and showing the
+  // necessary information, should be DELETED after
+
+  // printf(
+  //     "\n pid: %d name: %s user: %s pri: %ld ni: %ld virt: %lu res: %ld shr:
+  //     "
+  //     "%lu s: %c cpu: %.1f mem: %.1f time: %ld cmd: %s the new cmd : %s\n",
+  //     ProccessElement.pid, ProccessElement.name, ProccessElement.user,
+  //     ProccessElement.priority, ProccessElement.nice,
+  //     ProccessElement.virtualmem, ProccessElement.resident,
+  //     ProccessElement.sharemem, ProccessElement.state, ProccessElement.cpu,
+  //     ProccessElement.mem, ProccessElement.time,
+  //     ProccessElement.command_path,
+  //     process[_COMMAND].process_info.command_path);
+
   refresh();
   for (short i = _PID; i <= _COMMAND; ++i) {
+    // FIXME: change the inaccurate coordination for printing a
+    // process in the screen
     mvwprintw(win, xpos, ypos, process[i].format, process[i].process_info);
     xpos += 8;
   }

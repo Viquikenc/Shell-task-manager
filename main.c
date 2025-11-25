@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include "Menu.h"
+#include "error_handler.h"
 
 #define BASE_10 10
 
@@ -69,7 +70,6 @@ int main(int argc, char *argv[]) {
   mvwchgat(Info_win, 1, 0, xMax, A_STANDOUT, 0, NULL);
   refresh();
   wrefresh(Info_win);
-  printw("it's found!!");
   while (1) {
     uint16_t xpos = 1;
     uint16_t ypos = 2;
@@ -81,7 +81,6 @@ int main(int argc, char *argv[]) {
       pid = strtol(pid_dir->d_name, &endptr, BASE_10);
       if (pid != 0) {
         GetProcessInfoFromFile(&Process, pid);
-        refresh();
         WinCreateProccessItem(Info_win, xpos, ypos, Process);
         wrefresh(Info_win);
         refresh();
