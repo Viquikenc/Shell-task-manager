@@ -1,8 +1,5 @@
-#include <bits/time.h>
 #include <dirent.h>
 #include <ncurses.h>
-#include <stdbool.h>
-#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -80,8 +77,10 @@ int main(int argc, char *argv[]) {
     while ((pid_dir = readdir(dir))) {
       pid = strtol(pid_dir->d_name, &endptr, BASE_10);
       if (pid != 0) {
-        GetProcessInfoFromFile(&Process, pid);
-        WinCreateProccessItem(Info_win, xpos, ypos, Process);
+        if (GetProcessInfoFromFile(&Process, pid) != SUCCESS)
+          break;
+        if (WinCreateProccessItem(Info_win, xpos, ypos, Process) != SUCCESS)
+          break;
         wrefresh(Info_win);
         refresh();
         ++ypos;

@@ -10,7 +10,9 @@ typedef enum err_enum {
   ERR_OPEN_FILE,
   ERR_SCAN_FILE,
   ERR_READ_FILE,
-  ERR_PERMMISSION_DENIED
+  ERR_PERMMISSION_DENIED,
+  ERR_NOT_EXIST_FILE,
+  ERR_UNKNOWN
 } err_enum;
 
 typedef struct err_handl {
