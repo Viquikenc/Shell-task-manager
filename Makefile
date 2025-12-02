@@ -5,3 +5,4 @@ main: main.c
 
 clean:
 	rm -f main
+	rm -f errors.log

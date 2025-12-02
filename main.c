@@ -77,17 +77,16 @@ int main(int argc, char *argv[]) {
     while ((pid_dir = readdir(dir))) {
       pid = strtol(pid_dir->d_name, &endptr, BASE_10);
       if (pid != 0) {
-        if (GetProcessInfoFromFile(&Process, pid) != SUCCESS)
-          break;
-        if (WinCreateProccessItem(Info_win, xpos, ypos, Process) != SUCCESS)
-          break;
-        wrefresh(Info_win);
-        refresh();
-        ++ypos;
+        if (GetProcessInfoFromFile(&Process, pid) == SUCCESS &&
+            WinCreateProccessItem(Info_win, xpos, ypos, Process) == SUCCESS) {
+          wrefresh(Info_win);
+          refresh();
+          ++ypos;
+        }
       }
     }
     refresh();
-    sleep(8);
+    sleep(2);
   }
   endwin();
   return 0;

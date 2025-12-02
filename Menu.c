@@ -1,4 +1,7 @@
+#include <ncurses.h>
 #include <pwd.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -50,11 +53,13 @@ typedef struct ProccessProperties {
 // Gets the username from the given uid
 int GetUserFromUid(const pid_t uid, char user[16]) {
   struct passwd *pwd = getpwuid(uid);
-  if (pwd) {
-    strncpy(user, pwd->pw_name, USER_SIZE);
+  if (pwd != NULL) {
+    strncpy(user, pwd->pw_name, USER_SIZE - 1);
+    user[USER_SIZE] = '\0';
     return SUCCESS;
   } else {
-    ERR_SET(ERR_UNKNOWN);
+    ERR_SET(ERR_UNKNOWN, IGNORED);
+    free(pwd);
     return ERR_UNKNOWN;
   }
 }
@@ -63,16 +68,17 @@ int GetSharedMemSize(unsigned long *sharedmem, const pid_t process_id) {
   char path[256];
   FILE *file;
   (void)snprintf(path, sizeof(path), "/proc/%d/statm", process_id);
-  if ((file = fopen(path, "r"))) {
-    if (!fscanf(file, "%*d %*d %lu", sharedmem)) {
-      ERR_SET(ERR_SCAN_FILE);
+  if ((file = fopen(path, "r")) != NULL) {
+    if (fscanf(file, "%*d %*d %lu", sharedmem) == EOF) {
+      ERR_SET(ERR_SCAN_FILE, WARNING);
+      fclose(file);
       return ERR_SCAN_FILE;
     } else {
       fclose(file);
       return SUCCESS;
     }
   } else {
-    ERR_SET(ERR_OPEN_FILE);
+    ERR_SET(ERR_OPEN_FILE, WARNING);
     return ERR_OPEN_FILE;
   }
 }
@@ -84,13 +90,14 @@ int GetProcessCPUusage(float *cpu_usage, const time_t utime, const time_t stime,
   float uptime;
   const int64_t Hertz = sysconf(_SC_CLK_TCK);
   uint64_t total_time = cutime + cstime + utime + stime;
-  if ((file = fopen("/proc/uptime", "r")) == SUCCESS) {
-    if (fscanf(file, "%f", &uptime) != SUCCESS) {
-      ERR_SET(ERR_SCAN_FILE);
+  if ((file = fopen("/proc/uptime", "r")) != NULL) {
+    if (fscanf(file, "%f", &uptime) == EOF) {
+      ERR_SET(ERR_SCAN_FILE, WARNING);
+      fclose(file);
       return ERR_SCAN_FILE;
     }
   } else {
-    ERR_SET(ERR_OPEN_FILE);
+    ERR_SET(ERR_OPEN_FILE, WARNING);
     return ERR_OPEN_FILE;
   }
   fclose(file);
@@ -102,42 +109,35 @@ int GetProcessCPUusage(float *cpu_usage, const time_t utime, const time_t stime,
 int GetProcessFullPath(const pid_t pid, char *exe_path) {
   char process_path[CMD_PATH_SIZE];
   snprintf(process_path, sizeof(process_path), "/proc/%d/exe", pid);
+  errno = 0;
   ssize_t len = readlink(process_path, exe_path, CMD_PATH_SIZE - 1);
-  switch (len) {
-  case EIO:
-    ERR_SET(ERR_READ_FILE);
-    return ERR_READ_FILE;
-    break;
-  case ENOENT:
-    ERR_SET(ERR_NOT_EXIST_FILE);
-    return ERR_NOT_EXIST_FILE;
-    break;
-  case -1:
-    break;
-  default:
+  if (len != -1) {
     exe_path[len] = '\0';
-    break;
+    return SUCCESS;
+  } else {
+    ERR_SET(ERR_UNKNOWN, WARNING);
+    return ERR_UNKNOWN;
   }
-  return SUCCESS;
 }
 
 int GetProcessRAMusage(float *ram_usage, const pid_t pid,
                        const uint64_t resident) {
   FILE *total_mem_file;
   uint64_t total_mem;
-  if ((total_mem_file = fopen("/proc/meminfo", "r")) == SUCCESS) {
-    if (fscanf(total_mem_file, "%lu", &total_mem) == SUCCESS)
+  if ((total_mem_file = fopen("/proc/meminfo", "r")) != NULL) {
+    if (fscanf(total_mem_file, "%lu", &total_mem) != EOF) {
       *ram_usage = 100 * ((float)resident / (float)total_mem);
-    else {
-      ERR_SET(ERR_SCAN_FILE);
+      fclose(total_mem_file);
+      return SUCCESS;
+    } else {
+      ERR_SET(ERR_SCAN_FILE, WARNING);
+      fclose(total_mem_file);
       return ERR_SCAN_FILE;
     }
   } else {
-    ERR_SET(ERR_OPEN_FILE);
+    ERR_SET(ERR_OPEN_FILE, WARNING);
     return ERR_OPEN_FILE;
   }
-  fclose(total_mem_file);
-  return SUCCESS;
 }
 
 /* this shit is for getting all the information about a process (ex. pid,
@@ -152,7 +152,7 @@ int GetProcessInfoFromFile(NewProccessElement *Process, pid_t pid) {
   uint128_t starttime;
   snprintf(path, sizeof(path), "/proc/%d/stat", pid);
   FILE *pid_file;
-  if ((pid_file = fopen(path, "r"))) {
+  if ((pid_file = fopen(path, "r")) != NULL) {
     int throw = fscanf(
         pid_file,
         "%d %s %c %d %*d %*d %*d %*d %*d %*d %*d %*d %*d %lu %lu "
@@ -174,16 +174,17 @@ int GetProcessInfoFromFile(NewProccessElement *Process, pid_t pid) {
       if (GetProcessRAMusage(&Process->mem, Process->pid, Process->resident) !=
           SUCCESS)
         return ERR_UNKNOWN;
+      fclose(pid_file);
+      return SUCCESS;
     } else {
-      ERR_SET(ERR_SCAN_FILE);
+      ERR_SET(ERR_SCAN_FILE, WARNING);
+      fclose(pid_file);
       return ERR_SCAN_FILE;
     }
   } else {
-    ERR_SET(ERR_OPEN_FILE);
+    ERR_SET(ERR_OPEN_FILE, WARNING);
     return ERR_OPEN_FILE;
   }
-  fclose(pid_file);
-  return SUCCESS;
 }
 
 /* this is for displaying the process in your shit screen, this is one of the
@@ -207,12 +208,12 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
       {LONG_F, _TIME, {.time = ProccessElement.time}},
       {STRING_F, _COMMAND}};
 
-  strncpy(process[_NAME].process_info.name, ProccessElement.name,
-          NAME_SIZE - 1);
-  strncpy(process[_USER].process_info.user, ProccessElement.user,
-          USER_SIZE - 1);
-  strncpy(process[_COMMAND].process_info.command_path,
-          ProccessElement.command_path, CMD_PATH_SIZE);
+  (void)strncpy(process[_NAME].process_info.name, ProccessElement.name,
+                NAME_SIZE - 1);
+  (void)strncpy(process[_USER].process_info.user, ProccessElement.user,
+                USER_SIZE - 1);
+  (void)strncpy(process[_COMMAND].process_info.command_path,
+                ProccessElement.command_path, CMD_PATH_SIZE);
 
   // WARN: this only for testing and showing the necessary information, should
   // be DELETED after
@@ -233,8 +234,8 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
   for (short i = _PID; i <= _COMMAND; ++i) {
     // FIXME: change the inaccurate coordination for printing a
     // process in the screen
-    mvwprintw(win, xpos, ypos, process[i].format, process[i].process_info);
-    xpos += 8;
+    mvwprintw(win, ypos, xpos, process[i].format, process[i].process_info);
+    xpos += 5;
   }
   wrefresh(win);
   refresh();
