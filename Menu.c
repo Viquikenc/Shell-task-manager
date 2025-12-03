@@ -96,11 +96,11 @@ int GetProcessCPUusage(float *cpu_usage, const time_t utime, const time_t stime,
       fclose(file);
       return ERR_SCAN_FILE;
     }
+    fclose(file);
   } else {
     ERR_SET(ERR_OPEN_FILE, WARNING);
     return ERR_OPEN_FILE;
   }
-  fclose(file);
   float seconds = uptime - ((float)starttime / Hertz);
   *cpu_usage = 100 * (((float)total_time / Hertz) / seconds);
   return SUCCESS;
@@ -162,18 +162,28 @@ int GetProcessInfoFromFile(NewProccessElement *Process, pid_t pid) {
         &starttime, &Process->virtualmem, &Process->resident);
     if (throw != EOF) {
       Process->time = utime + stime;
-      if (GetUserFromUid(process_uid, Process->user) != SUCCESS)
+      if (GetUserFromUid(process_uid, Process->user) != SUCCESS) {
+        fclose(pid_file);
         return ERR_UNKNOWN;
-      if (GetSharedMemSize(&Process->sharemem, Process->pid) != SUCCESS)
+      }
+      if (GetSharedMemSize(&Process->sharemem, Process->pid) != SUCCESS) {
+        fclose(pid_file);
         return ERR_UNKNOWN;
-      if (GetProcessFullPath(Process->pid, Process->command_path) != SUCCESS)
+      }
+      if (GetProcessFullPath(Process->pid, Process->command_path) != SUCCESS) {
+        fclose(pid_file);
         return ERR_UNKNOWN;
+      }
       if (GetProcessCPUusage(&Process->cpu, utime, stime, cutime, cstime,
-                             starttime) != SUCCESS)
+                             starttime) != SUCCESS) {
+        fclose(pid_file);
         return ERR_UNKNOWN;
+      }
       if (GetProcessRAMusage(&Process->mem, Process->pid, Process->resident) !=
-          SUCCESS)
+          SUCCESS) {
+        fclose(pid_file);
         return ERR_UNKNOWN;
+      }
       fclose(pid_file);
       return SUCCESS;
     } else {
@@ -218,26 +228,74 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
   // WARN: this only for testing and showing the necessary information, should
   // be DELETED after
 
-  // printf(
-  //     "\n pid: %d name: %s user: %s pri: %ld ni: %ld virt: %lu res: %ld shr:
-  //     "
-  //     "%lu s: %c cpu: %.1f mem: %.1f time: %ld cmd: %s the new cmd : %s\n",
-  //     ProccessElement.pid, ProccessElement.name, ProccessElement.user,
-  //     ProccessElement.priority, ProccessElement.nice,
-  //     ProccessElement.virtualmem, ProccessElement.resident,
-  //     ProccessElement.sharemem, ProccessElement.state, ProccessElement.cpu,
-  //     ProccessElement.mem, ProccessElement.time,
-  //     ProccessElement.command_path,
-  //     process[_COMMAND].process_info.command_path);
+  // printf("\n pid: %d name: %s user: %s pri: %ld ni: %ld virt: %lu res: %ld
+  // shr:"
+  //        "%lu s: %c cpu: %.1f mem: %.1f time: %ld cmd: %s\n",
+  //        ProccessElement.pid, ProccessElement.name, ProccessElement.user,
+  //        ProccessElement.priority, ProccessElement.nice,
+  //        ProccessElement.virtualmem, ProccessElement.resident,
+  //        ProccessElement.sharemem, ProccessElement.state,
+  //        ProccessElement.cpu, ProccessElement.mem, ProccessElement.time,
+  //        ProccessElement.command_path);
 
-  refresh();
   for (short i = _PID; i <= _COMMAND; ++i) {
     // FIXME: change the inaccurate coordination for printing a
     // process in the screen
-    mvwprintw(win, ypos, xpos, process[i].format, process[i].process_info);
-    xpos += 5;
+    switch (i) {
+    case _PID:
+      mvwprintw(win, ypos, xpos, process[i].format,
+                process[i].process_info.pid);
+      break;
+    case _NAME:
+      mvwprintw(win, ypos, xpos, process[i].format,
+                process[i].process_info.name);
+      break;
+    case _USER:
+      mvwprintw(win, ypos, xpos, process[i].format,
+                process[i].process_info.user);
+      break;
+    case _PRI:
+      mvwprintw(win, ypos, xpos, process[i].format,
+                process[i].process_info.priority);
+      break;
+    case _NI:
+      mvwprintw(win, ypos, xpos, process[i].format,
+                process[i].process_info.nice);
+      break;
+    case _VIRT:
+      mvwprintw(win, ypos, xpos, process[i].format,
+                process[i].process_info.virtualmem);
+      break;
+    case _RES:
+      mvwprintw(win, ypos, xpos, process[i].format,
+                process[i].process_info.resident);
+      break;
+    case _SHR:
+      mvwprintw(win, ypos, xpos, process[i].format,
+                process[i].process_info.sharemem);
+      break;
+    case _S:
+      mvwprintw(win, ypos, xpos, process[i].format,
+                process[i].process_info.state);
+      break;
+    case _CPU:
+      mvwprintw(win, ypos, xpos, process[i].format,
+                process[i].process_info.cpu);
+      break;
+    case _MEM:
+      mvwprintw(win, ypos, xpos, process[i].format,
+                process[i].process_info.mem);
+      break;
+    case _TIME:
+      mvwprintw(win, ypos, xpos, process[i].format,
+                process[i].process_info.time);
+      break;
+    case _COMMAND:
+      mvwprintw(win, ypos, xpos, process[i].format,
+                process[i].process_info.command_path);
+      break;
+    }
+    xpos += 8;
   }
-  wrefresh(win);
-  refresh();
   return SUCCESS;
 }

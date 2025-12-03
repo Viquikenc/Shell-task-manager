@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#define MSG_MAX 256
+
 typedef enum flag_t {
   IGNORED = (1 << 0),
   WARNING = (1 << 1),
@@ -29,7 +31,7 @@ typedef struct err_handl {
 } err_handl;
 
 void err_set(err_enum err_code, flag_t flag, const char *file, uint64_t line);
-void write_log(char message[1024]);
+void write_log(char message[MSG_MAX]);
 
 #define ERR_SET(err, flag) err_set(err, flag, __FILE__, __LINE__)
 

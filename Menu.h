@@ -10,7 +10,7 @@
 #define CHAR_F "%c"
 #define INT8_F "%hhd"
 #define UINT16_F "%hu"
-#define FLOAT_F "%f"
+#define FLOAT_F "%.2f"
 #define LONG_F "%ld"
 
 #define uint128_t unsigned long long

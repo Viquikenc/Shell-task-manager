@@ -1,5 +1,6 @@
 #include <dirent.h>
 #include <ncurses.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -8,6 +9,8 @@
 #include "error_handler.h"
 
 #define BASE_10 10
+
+FILE *err_file;
 
 typedef enum TableHeaderElementsEnum {
   PID,
@@ -32,6 +35,7 @@ typedef struct TableHeaderElementStruct {
 } TableHeaderElementStruct;
 
 int main(int argc, char *argv[]) {
+  err_file = fopen("errors.log", "a+");
   initscr();
   cbreak();
   noecho();
@@ -79,14 +83,15 @@ int main(int argc, char *argv[]) {
       if (pid != 0) {
         if (GetProcessInfoFromFile(&Process, pid) == SUCCESS &&
             WinCreateProccessItem(Info_win, xpos, ypos, Process) == SUCCESS) {
-          wrefresh(Info_win);
           refresh();
+          wrefresh(Info_win);
           ++ypos;
         }
       }
     }
+    closedir(dir);
     refresh();
-    sleep(2);
+    wrefresh(Info_win);
   }
   endwin();
   return 0;
