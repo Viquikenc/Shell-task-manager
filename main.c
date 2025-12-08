@@ -1,5 +1,7 @@
 #include <dirent.h>
 #include <ncurses.h>
+#include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +35,9 @@ typedef struct TableHeaderElementStruct {
   int str_size;
   TableHeaderElementsEnum pos;
 } TableHeaderElementStruct;
+
+static void *KillProgram(void *);
+static void SignalHandler(int signal);
 
 int main(int argc, char *argv[]) {
   err_file = fopen("errors.log", "a+");
@@ -71,9 +76,12 @@ int main(int argc, char *argv[]) {
   mvwchgat(Info_win, 1, 0, xMax, A_STANDOUT, 0, NULL);
   refresh();
   wrefresh(Info_win);
+  uint16_t ypos = 2;
+  signal(SIGINT, SignalHandler);
+  pthread_t pthread;
+  pthread_create(&pthread, NULL, KillProgram, NULL);
   while (1) {
     uint16_t xpos = 1;
-    uint16_t ypos = 2;
     pid_t pid = 1;
     DIR *dir = opendir("/proc");
     char *endptr;
@@ -83,16 +91,33 @@ int main(int argc, char *argv[]) {
       if (pid != 0) {
         if (GetProcessInfoFromFile(&Process, pid) == SUCCESS &&
             WinCreateProccessItem(Info_win, xpos, ypos, Process) == SUCCESS) {
+          ypos += 1;
           refresh();
           wrefresh(Info_win);
-          ++ypos;
         }
       }
     }
     closedir(dir);
     refresh();
     wrefresh(Info_win);
+    usleep(2000 * 1000);
   }
   endwin();
   return 0;
+}
+
+static void *KillProgram(void *arg) {
+  while (1) {
+    if (getch() == 'q') {
+      endwin();
+      exit(0);
+    }
+  }
+  return 0;
+}
+
+static void SignalHandler(int signal) {
+  endwin();
+  puts("The program has been interepted");
+  exit(1);
 }
