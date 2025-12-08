@@ -1,7 +1,9 @@
 CC=gcc
+CFLAGS=-lncurses -g
+CWARN=-Wall -Werror -Wpedantic
 
 main: main.c
-	$(CC) main.c Menu.c error_handler.c -o main -lncurses -g -Wall -Werror -Wpedantic
+	$(CC) main.c Menu.c error_handler.c -o main $(CFLAGS) $(CWARN)
 
 clean:
 	rm -f main
