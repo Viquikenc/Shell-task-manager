@@ -51,7 +51,7 @@ typedef struct ProccessProperties {
 } ProccessProperties;
 
 // Gets the username from the given uid
-int GetUserFromUid(const pid_t uid, char user[16]) {
+int GetUserFromUid(const pid_t uid, char user[USER_SIZE]) {
   struct passwd *pwd = getpwuid(uid);
   if (pwd != NULL) {
     strncpy(user, pwd->pw_name, USER_SIZE - 1);
@@ -65,9 +65,9 @@ int GetUserFromUid(const pid_t uid, char user[16]) {
 }
 
 int GetSharedMemSize(unsigned long *sharedmem, const pid_t process_id) {
-  char path[256];
+  char path[32];
   FILE *file;
-  (void)snprintf(path, sizeof(path), "/proc/%d/statm", process_id);
+  snprintf(path, sizeof(path), "/proc/%d/statm", process_id);
   if ((file = fopen(path, "r")) != NULL) {
     if (fscanf(file, "%*d %*d %lu", sharedmem) == EOF) {
       ERR_SET(ERR_SCAN_FILE, WARNING);
@@ -92,8 +92,8 @@ int GetProcessCPUusage(float *cpu_usage, const time_t utime, const time_t stime,
   uint64_t total_time = cutime + cstime + utime + stime;
   if ((file = fopen("/proc/uptime", "r")) != NULL) {
     if (fscanf(file, "%f", &uptime) == EOF) {
-      ERR_SET(ERR_SCAN_FILE, WARNING);
       fclose(file);
+      ERR_SET(ERR_SCAN_FILE, WARNING);
       return ERR_SCAN_FILE;
     }
     fclose(file);
@@ -101,8 +101,8 @@ int GetProcessCPUusage(float *cpu_usage, const time_t utime, const time_t stime,
     ERR_SET(ERR_OPEN_FILE, WARNING);
     return ERR_OPEN_FILE;
   }
-  float seconds = uptime - ((float)starttime / Hertz);
-  *cpu_usage = 100 * (((float)total_time / Hertz) / seconds);
+  float seconds = uptime - ((float)starttime / (float)Hertz);
+  *cpu_usage = 100 * (((float)total_time / (float)Hertz) / (float)seconds);
   return SUCCESS;
 }
 
@@ -126,7 +126,7 @@ int GetProcessRAMusage(float *ram_usage, const pid_t pid,
   uint64_t total_mem;
   if ((total_mem_file = fopen("/proc/meminfo", "r")) != NULL) {
     if (fscanf(total_mem_file, "%lu", &total_mem) != EOF) {
-      *ram_usage = 100 * ((float)resident / (float)total_mem);
+      *ram_usage = 100.0 * ((float)resident / total_mem);
       fclose(total_mem_file);
       return SUCCESS;
     } else {
@@ -142,7 +142,7 @@ int GetProcessRAMusage(float *ram_usage, const pid_t pid,
 
 /* this shit is for getting all the information about a process (ex. pid,
  * ram_usage, ...)*/
-int GetProcessInfoFromFile(NewProccessElement *Process, pid_t pid) {
+int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid) {
   pid_t process_uid;
   char path[120];
   unsigned long stime;
@@ -207,10 +207,10 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
       {UINT32_F, _PID, {.pid = ProccessElement.pid}},
       {STRING_F, _NAME},
       {STRING_F, _USER},
-      {INT8_F, _PRI, {.priority = ProccessElement.priority}},
-      {INT8_F, _NI, {.nice = ProccessElement.nice}},
+      {INT64_F, _PRI, {.priority = ProccessElement.priority}},
+      {INT64_F, _NI, {.nice = ProccessElement.nice}},
       {UINT64_F, _VIRT, {.virtualmem = ProccessElement.virtualmem}},
-      {UINT64_F, _RES, {.resident = ProccessElement.resident}},
+      {INT64_F, _RES, {.resident = ProccessElement.resident}},
       {UINT64_F, _SHR, {.sharemem = ProccessElement.sharemem}},
       {CHAR_F, _S, {.state = ProccessElement.state}},
       {FLOAT_F, _CPU, {.cpu = ProccessElement.cpu}},
@@ -223,7 +223,8 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
   (void)strncpy(process[_USER].process_info.user, ProccessElement.user,
                 USER_SIZE - 1);
   (void)strncpy(process[_COMMAND].process_info.command_path,
-                ProccessElement.command_path, CMD_PATH_SIZE);
+                ProccessElement.command_path, CMD_PATH_SIZE - 1);
+  process[_COMMAND].process_info.command_path[CMD_PATH_SIZE - 1] = '\0';
 
   // WARN: this only for testing and showing the necessary information, should
   // be DELETED after

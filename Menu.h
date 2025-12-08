@@ -6,6 +6,7 @@
 
 #define UINT32_F "%u"
 #define UINT64_F "%lu"
+#define INT64_F "%ld"
 #define STRING_F "%s"
 #define CHAR_F "%c"
 #define INT8_F "%hhd"
@@ -35,7 +36,7 @@ typedef struct NewProccessElement {
   char command_path[CMD_PATH_SIZE]; // string
 } NewProccessElement;
 
-int GetUserFromUid(const pid_t uid, char user[16]);
+int GetUserFromUid(const pid_t uid, char user[USER_SIZE]);
 
 int GetSharedMemSize(unsigned long *sharedmem, const pid_t process_id);
 
@@ -46,7 +47,7 @@ int GetProcessCPUusage(float *cpu_usage, const time_t utime, const time_t stime,
 int GetProcessRAMusage(float *ram_usage, const pid_t pid,
                        const uint64_t resident);
 
-int GetProcessInfoFromFile(NewProccessElement *Process, pid_t pid);
+int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid);
 
 int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
                           const NewProccessElement ProccessElement);
