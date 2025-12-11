@@ -1,5 +1,6 @@
 #include <ncurses.h>
 #include <pwd.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,7 +46,7 @@ typedef enum ProccessElementsEnum {
 } ProccessElementsEnum;
 
 typedef struct ProccessProperties {
-  char format[5];
+  char format[8];
   char order;
   NewProccessElement process_info;
 } ProccessProperties;
@@ -67,7 +68,7 @@ int GetUserFromUid(const pid_t uid, char user[USER_SIZE]) {
 int GetSharedMemSize(unsigned long *sharedmem, const pid_t process_id) {
   char path[32];
   FILE *file;
-  snprintf(path, sizeof(path), "/proc/%d/statm", process_id);
+  (void)snprintf(path, sizeof(path), "/proc/%d/statm", process_id);
   if ((file = fopen(path, "r")) != NULL) {
     if (fscanf(file, "%*d %*d %lu", sharedmem) == EOF) {
       ERR_SET(ERR_SCAN_FILE, WARNING);
@@ -108,20 +109,31 @@ int GetProcessCPUusage(float *cpu_usage, const time_t utime, const time_t stime,
 
 int GetProcessFullPath(const pid_t pid, char *exe_path) {
   char process_path[CMD_PATH_SIZE];
-  snprintf(process_path, sizeof(process_path), "/proc/%d/exe", pid);
+  (void)snprintf(process_path, sizeof(process_path), "/proc/%d/cmdline", pid);
   errno = 0;
-  ssize_t len = readlink(process_path, exe_path, CMD_PATH_SIZE - 1);
-  if (len != -1) {
-    exe_path[len] = '\0';
-    return SUCCESS;
+  FILE *process_path_cmd = fopen(process_path, "r");
+  if (process_path_cmd != NULL) {
+    size_t readen_bytes =
+        fread(process_path, 1, sizeof(process_path), process_path_cmd);
+    if (readen_bytes > 0) {
+      for (size_t i = 0; i < readen_bytes; i++)
+        exe_path[i] = (process_path[i] == '\0') ? ' ' : process_path[i];
+      exe_path[readen_bytes] = '\0';
+      fclose(process_path_cmd);
+      return SUCCESS;
+    } else {
+      fclose(process_path_cmd);
+      ERR_SET(ERR_UNKNOWN, WARNING);
+      return ERR_UNKNOWN;
+    }
   } else {
-    ERR_SET(ERR_UNKNOWN, WARNING);
+    ERR_SET(ERR_UNKNOWN, IGNORED);
     return ERR_UNKNOWN;
   }
 }
 
-int GetProcessRAMusage(float *ram_usage, const pid_t pid,
-                       const uint64_t resident) {
+inline int GetProcessRAMusage(float *ram_usage, const pid_t pid,
+                              const uint64_t resident) {
   FILE *total_mem_file;
   uint64_t total_mem;
   if ((total_mem_file = fopen("/proc/meminfo", "r")) != NULL) {
@@ -150,7 +162,7 @@ int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid) {
   time_t cutime;
   time_t cstime;
   uint128_t starttime;
-  snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+  (void)snprintf(path, sizeof(path), "/proc/%d/stat", pid);
   FILE *pid_file;
   if ((pid_file = fopen(path, "r")) != NULL) {
     int throw = fscanf(
@@ -160,6 +172,7 @@ int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid) {
         &Process->pid, Process->name, &Process->state, &process_uid, &utime,
         &stime, &cutime, &cstime, &Process->priority, &Process->nice,
         &starttime, &Process->virtualmem, &Process->resident);
+    Process->name[NAME_SIZE - 1] = '\0';
     if (throw != EOF) {
       Process->time = utime + stime;
       if (GetUserFromUid(process_uid, Process->user) != SUCCESS) {
@@ -204,7 +217,7 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
   /* an array that stores all the properties in one array so you could access
    * easily anything about a process */
   ProccessProperties process[_COMMAND + 1] = {
-      {UINT32_F, _PID, {.pid = ProccessElement.pid}},
+      {INT_F, _PID, {.pid = ProccessElement.pid}},
       {STRING_F, _NAME},
       {STRING_F, _USER},
       {INT64_F, _PRI, {.priority = ProccessElement.priority}},
@@ -225,20 +238,6 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
   (void)strncpy(process[_COMMAND].process_info.command_path,
                 ProccessElement.command_path, CMD_PATH_SIZE - 1);
   process[_COMMAND].process_info.command_path[CMD_PATH_SIZE - 1] = '\0';
-
-  // WARN: this only for testing and showing the necessary information, should
-  // be DELETED after
-
-  // printf("\n pid: %d name: %s user: %s pri: %ld ni: %ld virt: %lu res: %ld
-  // shr:"
-  //        "%lu s: %c cpu: %.1f mem: %.1f time: %ld cmd: %s\n",
-  //        ProccessElement.pid, ProccessElement.name, ProccessElement.user,
-  //        ProccessElement.priority, ProccessElement.nice,
-  //        ProccessElement.virtualmem, ProccessElement.resident,
-  //        ProccessElement.sharemem, ProccessElement.state,
-  //        ProccessElement.cpu, ProccessElement.mem, ProccessElement.time,
-  //        ProccessElement.command_path);
-
   for (short i = _PID; i <= _COMMAND; ++i) {
     // FIXME: change the inaccurate coordination for printing a
     // process in the screen
@@ -246,57 +245,70 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
     case _PID:
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.pid);
+      xpos = getcurx(win);
       break;
     case _NAME:
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.name);
+      xpos = getcurx(win);
       break;
     case _USER:
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.user);
+      xpos = getcurx(win);
       break;
     case _PRI:
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.priority);
+      xpos = getcurx(win);
       break;
     case _NI:
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.nice);
+      xpos = getcurx(win);
       break;
     case _VIRT:
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.virtualmem);
+      xpos = getcurx(win);
       break;
     case _RES:
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.resident);
+      xpos = getcurx(win);
       break;
     case _SHR:
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.sharemem);
+      xpos = getcurx(win);
       break;
     case _S:
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.state);
+      xpos = getcurx(win);
       break;
     case _CPU:
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.cpu);
+      xpos = getcurx(win);
       break;
     case _MEM:
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.mem);
+      xpos = getcurx(win);
       break;
     case _TIME:
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.time);
+      xpos = getcurx(win);
       break;
     case _COMMAND:
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.command_path);
+      xpos = getcurx(win);
       break;
     }
-    xpos += 8;
+    xpos += 2;
   }
   return SUCCESS;
 }

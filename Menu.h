@@ -4,13 +4,11 @@
 #include <ncurses.h>
 #include <sys/types.h>
 
-#define UINT32_F "%u"
+#define INT_F "%d"
 #define UINT64_F "%lu"
 #define INT64_F "%ld"
 #define STRING_F "%s"
 #define CHAR_F "%c"
-#define INT8_F "%hhd"
-#define UINT16_F "%hu"
 #define FLOAT_F "%.2f"
 #define LONG_F "%ld"
 

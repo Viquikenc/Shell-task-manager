@@ -2,6 +2,7 @@
 #include <ncurses.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,6 +18,7 @@ FILE *err_file;
 typedef enum TableHeaderElementsEnum {
   PID,
   USER,
+  NAME,
   PRI,
   NI,
   VIRT,
@@ -36,6 +38,8 @@ typedef struct TableHeaderElementStruct {
   TableHeaderElementsEnum pos;
 } TableHeaderElementStruct;
 
+static WINDOW *info_win;
+
 static void *KillProgram(void *);
 static void SignalHandler(int signal);
 
@@ -47,11 +51,12 @@ int main(int argc, char *argv[]) {
   NewProccessElement Process;
   int xMax, yMax;
   getmaxyx(stdscr, yMax, xMax);
-  WINDOW *Info_win = newwin((3 * yMax) / 4, xMax, yMax / 4, 0);
+  info_win = newwin((3 * yMax) / 4, xMax, yMax / 4, 0);
 
   TableHeaderElementStruct TableList[MAX] = {
       {"PID", (int)strlen("PID"), PID},
       {"User", (int)strlen("User"), USER},
+      {"Name", (int)strlen("Name"), NAME},
       {"PRI", (int)strlen("PRI"), PRI},
       {"NI", (int)strlen("NI"), NI},
       {"VIRT", (int)strlen("VIRT"), VIRT},
@@ -68,14 +73,14 @@ int main(int argc, char *argv[]) {
   short margin = 2;
 
   do {
-    mvwprintw(Info_win, 1, current_pos, "%s", TableList[i].name);
+    mvwprintw(info_win, 1, current_pos, "%s", TableList[i].name);
     current_pos += TableList[i].str_size + margin;
     i++;
-  } while (i <= COMMAND);
+  } while (i < MAX);
 
-  mvwchgat(Info_win, 1, 0, xMax, A_STANDOUT, 0, NULL);
+  mvwchgat(info_win, 1, 0, xMax, A_STANDOUT, 0, NULL);
   refresh();
-  wrefresh(Info_win);
+  wrefresh(info_win);
   uint16_t ypos = 2;
   signal(SIGINT, SignalHandler);
   pthread_t pthread;
@@ -90,17 +95,14 @@ int main(int argc, char *argv[]) {
       pid = strtol(pid_dir->d_name, &endptr, BASE_10);
       if (pid != 0) {
         if (GetProcessInfoFromFile(&Process, pid) == SUCCESS &&
-            WinCreateProccessItem(Info_win, xpos, ypos, Process) == SUCCESS) {
+            WinCreateProccessItem(info_win, xpos, ypos, Process) == SUCCESS) {
           ypos += 1;
-          refresh();
-          wrefresh(Info_win);
+          wrefresh(info_win);
         }
       }
     }
     closedir(dir);
-    refresh();
-    wrefresh(Info_win);
-    usleep(2000 * 1000);
+    wrefresh(info_win);
   }
   endwin();
   return 0;
@@ -109,6 +111,7 @@ int main(int argc, char *argv[]) {
 static void *KillProgram(void *arg) {
   while (1) {
     if (getch() == 'q') {
+      delwin(info_win);
       endwin();
       exit(0);
     }
@@ -117,6 +120,7 @@ static void *KillProgram(void *arg) {
 }
 
 static void SignalHandler(int signal) {
+  delwin(info_win);
   endwin();
   puts("The program has been interepted");
   exit(1);
