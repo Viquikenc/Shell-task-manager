@@ -1,11 +1,13 @@
 #include <ncurses.h>
 #include <pwd.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
+#include "Debug.h"
 #include "Menu.h"
 #include "error_handler.h"
 
@@ -13,23 +15,38 @@
 
 #define uint128_t unsigned long long
 
-typedef enum TableHeaderElementsEnum {
-  PID = 3,
-  NAME = 4,
-  USER = 4,
-  PRI = 3,
-  NI = 2,
-  VIRT = 4,
-  RES = 3,
-  SHR = 3,
-  S = 1,
-  CPU = 3,
-  MEM = 3,
-  TIME = 4,
-  COMMAND = 7,
-} TableHeaderElementsEnum;
+// static TableHeaderElementStruct TableList[MAX] = {
+//     {"PID", (int)strlen("PID"), PID_MARG, PID},
+//     {"Name", (int)strlen("Name"), NAME_MARG, NAME},
+//     {"User", (int)strlen("User"), USER_MARG, USER},
+//     {"PRI", (int)strlen("PRI"), PRI_MARG, PRI},
+//     {"NI", (int)strlen("NI"), NI_MARG, NI},
+//     {"VIRT", (int)strlen("VIRT"), VIRT_MARG, VIRT},
+//     {"RES", (int)strlen("REST"), RES_MARG, RES},
+//     {"SHR", (int)strlen("SHR"), SHR_MARG, SHR},
+//     {"S", (int)strlen("S"), S_MARG, S},
+//     {"CPU", (int)strlen("CPU"), CPU_MARG, CPU},
+//     {"MEM", (int)strlen("MEM"), MEM_MARG, MEM},
+//     {"Time", (int)strlen("Time"), TIME_MARG, TIME},
+//     {"Command", (int)strlen("Command"), 0, COMMAND},
+// };
 
-typedef enum ProccessElementsEnum {
+union DataType {
+  int int_val;
+  int64_t int64_val;
+  uint64_t uint64_val;
+  long long_val;
+  char *string_val;
+};
+
+enum DataEnum { INT, INT64, UINT64, LONG, STRING };
+
+struct DataStruct {
+  enum DataEnum DATA;
+  union DataType data;
+};
+
+typedef enum ProcessElementsEnum {
   _PID,
   _NAME,
   _USER,
@@ -42,8 +59,8 @@ typedef enum ProccessElementsEnum {
   _CPU,
   _MEM,
   _TIME,
-  _COMMAND,
-} ProccessElementsEnum;
+  _COMMAND
+} ProcessElementsEnum;
 
 typedef struct ProccessProperties {
   char format[8];
@@ -210,6 +227,22 @@ int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid) {
   }
 }
 
+static void GetNumOfDigits(const struct DataStruct data, uint8_t *num_digit) {
+  int result;
+  switch (data.DATA) {
+  case STRING:
+    *num_digit = (uint8_t)strlen(data.data.string_val);
+    break;
+  default:
+    result = data.data.int_val;
+    while (result > 9 || result < -9) {
+      result /= 10;
+      ++*num_digit;
+    }
+    break;
+  }
+}
+
 /* this is for displaying the process in your shit screen, this is one of the
  * reasons why GUI shouldn't exist */
 int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
@@ -241,74 +274,140 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
   for (short i = _PID; i <= _COMMAND; ++i) {
     // FIXME: change the inaccurate coordination for printing a
     // process in the screen
+    uint8_t digit_len = 0;
     switch (i) {
     case _PID:
+      GetNumOfDigits(
+          (struct DataStruct){
+              INT, (union DataType){.int_val = process[i].process_info.pid}},
+          &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.pid);
-      xpos = getcurx(win);
+      xpos = getcurx(win) + (PID_MAX - digit_len);
+      DebugWriteNumInfo((long)digit_len);
       break;
     case _NAME:
-      mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.name);
-      xpos = getcurx(win);
-      break;
-    case _USER:
+      GetNumOfDigits(
+          (struct DataStruct){
+              STRING,
+              (union DataType){.string_val = process[i].process_info.name}},
+          &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.user);
-      xpos = getcurx(win);
+      xpos = getcurx(win) + (USER_MAX - digit_len);
+      DebugWriteNumInfo((long)digit_len);
+      break;
+    case _USER:
+      GetNumOfDigits(
+          (struct DataStruct){
+              STRING,
+              (union DataType){.string_val = process[i].process_info.user}},
+          &digit_len);
+      mvwprintw(win, ypos, xpos, process[i].format,
+                process[i].process_info.name);
+      xpos = getcurx(win) + (NAME__MAX - digit_len);
+      DebugWriteNumInfo((long)digit_len);
       break;
     case _PRI:
+      GetNumOfDigits(
+          (struct DataStruct){
+              INT64,
+              (union DataType){.int64_val = process[i].process_info.priority}},
+          &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.priority);
-      xpos = getcurx(win);
+      xpos = getcurx(win) + (PRI_MAX - digit_len);
+      DebugWriteNumInfo((long)digit_len);
       break;
     case _NI:
+      GetNumOfDigits(
+          (struct DataStruct){
+              INT64,
+              (union DataType){.int64_val = process[i].process_info.nice}},
+          &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.nice);
-      xpos = getcurx(win);
+      xpos = getcurx(win) + (NI_MAX - digit_len +
+                             ((process[i].process_info.nice < 0) ? 1 : 0));
+      DebugWriteNumInfo((long)digit_len);
       break;
     case _VIRT:
+      GetNumOfDigits(
+          (struct DataStruct){
+              UINT64, (union DataType){.uint64_val =
+                                           process[i].process_info.virtualmem}},
+          &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.virtualmem);
-      xpos = getcurx(win);
+      xpos = getcurx(win) + (VIRT_MAX - digit_len);
+      DebugWriteNumInfo((long)digit_len);
       break;
     case _RES:
+      GetNumOfDigits(
+          (struct DataStruct){
+              INT64,
+              (union DataType){.int_val = process[i].process_info.resident}},
+          &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.resident);
-      xpos = getcurx(win);
+      xpos = getcurx(win) + (RES_MAX - digit_len);
+      DebugWriteNumInfo((long)digit_len);
       break;
     case _SHR:
+      GetNumOfDigits(
+          (struct DataStruct){
+              UINT64,
+              (union DataType){.uint64_val = process[i].process_info.sharemem}},
+          &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.sharemem);
-      xpos = getcurx(win);
+      xpos = getcurx(win) + (SHR_MAX - digit_len);
+      DebugWriteNumInfo((long)digit_len);
       break;
     case _S:
+      digit_len = 1;
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.state);
-      xpos = getcurx(win);
+      xpos = getcurx(win) + (S_MAX - digit_len);
+      DebugWriteNumInfo((long)digit_len);
       break;
     case _CPU:
+      digit_len = 4;
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.cpu);
-      xpos = getcurx(win);
+      xpos = getcurx(win) + (CPU_MAX - digit_len);
+      DebugWriteNumInfo((long)digit_len);
       break;
     case _MEM:
+      digit_len = 4;
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.mem);
-      xpos = getcurx(win);
+      xpos = getcurx(win) + (MEM_MAX - digit_len);
+      DebugWriteNumInfo((long)digit_len);
       break;
     case _TIME:
+      GetNumOfDigits(
+          (struct DataStruct){
+              LONG, (union DataType){.long_val = process[i].process_info.time}},
+          &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.time);
-      xpos = getcurx(win);
+      xpos = getcurx(win) + (TIME_MAX - digit_len);
+      DebugWriteNumInfo((long)digit_len);
+      DebugWriteStringInfo("------------------------");
       break;
     case _COMMAND:
+      GetNumOfDigits(
+          (struct DataStruct){
+              STRING,
+              (union DataType){.string_val =
+                                   process[i].process_info.command_path}},
+          &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.command_path);
       xpos = getcurx(win);
       break;
     }
-    xpos += 2;
   }
   return SUCCESS;
 }

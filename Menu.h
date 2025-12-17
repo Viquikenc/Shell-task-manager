@@ -2,6 +2,7 @@
 #define __MENU_H
 
 #include <ncurses.h>
+#include <string.h>
 #include <sys/types.h>
 
 #define INT_F "%d"
@@ -17,6 +18,60 @@
 #define NAME_SIZE 32
 #define USER_SIZE 16
 #define CMD_PATH_SIZE 256
+
+typedef enum TableHeaderElementsMarginEnum {
+  PID_MARG = 1,
+  NAME_MARG = 18,
+  USER_MARG = 5,
+  PRI_MARG = 2,
+  NI_MARG = 1,
+  VIRT_MARG = 5,
+  RES_MARG = 4,
+  SHR_MARG = 4,
+  S_MARG = 1,
+  CPU_MARG = 2,
+  MEM_MARG = 2,
+  TIME_MARG = 5
+} TableHeaderElementsMarginEnum;
+
+typedef enum TableHeaderElementsEnum {
+  PID,
+  USER,
+  NAME,
+  PRI,
+  NI,
+  VIRT,
+  RES,
+  SHR,
+  S,
+  CPU,
+  MEM,
+  TIME,
+  COMMAND,
+  MAX
+} TableHeaderElementsEnum;
+
+typedef enum MaxTableElementsEnum {
+  PID_MAX = PID_MARG + strlen("PID"),
+  NAME__MAX = NAME_MARG + strlen("NAME"),
+  USER_MAX = USER_MARG + strlen("USER"),
+  PRI_MAX = PRI_MARG + strlen("PRI"),
+  NI_MAX = NI_MARG + strlen("NI"),
+  VIRT_MAX = VIRT_MARG + strlen("VIRT"),
+  RES_MAX = RES_MARG + strlen("RES"),
+  SHR_MAX = SHR_MARG + strlen("SHR"),
+  S_MAX = S_MARG + strlen("S"),
+  CPU_MAX = CPU_MARG + strlen("CPU"),
+  MEM_MAX = MEM_MARG + strlen("MEM"),
+  TIME_MAX = TIME_MARG + strlen("TIME")
+} MaxTableElementsEnum;
+
+typedef struct TableHeaderElementStruct {
+  char *name;
+  int str_size;
+  int margin;
+  TableHeaderElementsEnum pos;
+} TableHeaderElementStruct;
 
 typedef struct NewProccessElement {
   pid_t pid;                        //  int

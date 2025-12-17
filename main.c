@@ -5,88 +5,68 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 
 #include "Menu.h"
 #include "error_handler.h"
 
 #define BASE_10 10
+#define NANO_PER_SEC 1000000000
 
 FILE *err_file;
 
-typedef enum TableHeaderElementsEnum {
-  PID,
-  USER,
-  NAME,
-  PRI,
-  NI,
-  VIRT,
-  RES,
-  SHR,
-  S,
-  CPU,
-  MEM,
-  TIME,
-  COMMAND,
-  MAX
-} TableHeaderElementsEnum;
-
-typedef struct TableHeaderElementStruct {
-  char *name;
-  int str_size;
-  TableHeaderElementsEnum pos;
-} TableHeaderElementStruct;
-
 static WINDOW *info_win;
 
-static void *KillProgram(void *);
+static void *KeyHandler(void *);
 static void SignalHandler(int signal);
 
 int main(int argc, char *argv[]) {
+  TableHeaderElementStruct TableList[MAX] = {
+      {"PID", (int)strlen("PID"), PID_MARG, PID},
+      {"Name", (int)strlen("Name"), NAME_MARG, NAME},
+      {"User", (int)strlen("User"), USER_MARG, USER},
+      {"PRI", (int)strlen("PRI"), PRI_MARG, PRI},
+      {"NI", (int)strlen("NI"), NI_MARG, NI},
+      {"VIRT", (int)strlen("VIRT"), VIRT_MARG, VIRT},
+      {"RES", (int)strlen("REST"), RES_MARG, RES},
+      {"SHR", (int)strlen("SHR"), SHR_MARG, SHR},
+      {"S", (int)strlen("S"), S_MARG, S},
+      {"CPU", (int)strlen("CPU"), CPU_MARG, CPU},
+      {"MEM", (int)strlen("MEM"), MEM_MARG, MEM},
+      {"Time", (int)strlen("Time"), TIME_MARG, TIME},
+      {"Command", (int)strlen("Command"), 0, COMMAND},
+  };
+
   err_file = fopen("errors.log", "a+");
   initscr();
   cbreak();
   noecho();
   NewProccessElement Process;
-  int xMax, yMax;
-  getmaxyx(stdscr, yMax, xMax);
+  int xMax, yMax; getmaxyx(stdscr, yMax, xMax);
   info_win = newwin((3 * yMax) / 4, xMax, yMax / 4, 0);
 
-  TableHeaderElementStruct TableList[MAX] = {
-      {"PID", (int)strlen("PID"), PID},
-      {"User", (int)strlen("User"), USER},
-      {"Name", (int)strlen("Name"), NAME},
-      {"PRI", (int)strlen("PRI"), PRI},
-      {"NI", (int)strlen("NI"), NI},
-      {"VIRT", (int)strlen("VIRT"), VIRT},
-      {"RES", (int)strlen("REST"), RES},
-      {"SHR", (int)strlen("SHR"), SHR},
-      {"S", (int)strlen("S"), S},
-      {"CPU", (int)strlen("CPU"), CPU},
-      {"MEM", (int)strlen("MEM"), MEM},
-      {"Time", (int)strlen("Time"), TIME},
-      {"Command", (int)strlen("Command"), COMMAND},
-  };
   int current_pos = 1;
   int i = 0;
-  short margin = 2;
 
   do {
-    mvwprintw(info_win, 1, current_pos, "%s", TableList[i].name);
-    current_pos += TableList[i].str_size + margin;
+    mvprintw(yMax / 4 - 1, current_pos, "%s", TableList[i].name);
+    current_pos += TableList[i].str_size + TableList[i].margin;
     i++;
   } while (i < MAX);
 
-  mvwchgat(info_win, 1, 0, xMax, A_STANDOUT, 0, NULL);
+  mvchgat(yMax / 4 - 1, 0, xMax, A_STANDOUT, 0, NULL);
   refresh();
   wrefresh(info_win);
-  uint16_t ypos = 2;
+  keypad(info_win, TRUE);
   signal(SIGINT, SignalHandler);
   pthread_t pthread;
-  pthread_create(&pthread, NULL, KillProgram, NULL);
+  pthread_create(&pthread, NULL, KeyHandler, NULL);
+  struct timespec start, end;
   while (1) {
+    refresh();
+    clock_gettime(CLOCK_MONOTONIC, &start);
     uint16_t xpos = 1;
+    uint16_t ypos = 0;
     pid_t pid = 1;
     DIR *dir = opendir("/proc");
     char *endptr;
@@ -103,14 +83,26 @@ int main(int argc, char *argv[]) {
     }
     closedir(dir);
     wrefresh(info_win);
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    long elapsed_ns = (end.tv_sec - start.tv_sec) * NANO_PER_SEC +
+                      (end.tv_nsec - start.tv_nsec);
+    if (elapsed_ns < NANO_PER_SEC) {
+      long remaining_ns = NANO_PER_SEC - elapsed_ns;
+      struct timespec sleep_time = {.tv_sec = 0, .tv_nsec = remaining_ns};
+      nanosleep(&sleep_time, NULL);
+      wclear(info_win);
+    } else {
+      wclear(info_win);
+    }
   }
   endwin();
   return 0;
 }
 
-static void *KillProgram(void *arg) {
+static void *KeyHandler(void *arg) {
   while (1) {
-    if (getch() == 'q') {
+    int key = getch();
+    if (key == 'q') {
       delwin(info_win);
       endwin();
       exit(0);
