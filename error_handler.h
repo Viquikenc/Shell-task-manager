@@ -1,5 +1,5 @@
-#ifndef __ERR_HANDLE
-#define __ERR_HANDLE
+#ifndef __ERR_HANDLE_H
+#define __ERR_HANDLE_H
 
 #include <errno.h>
 #include <stdint.h>

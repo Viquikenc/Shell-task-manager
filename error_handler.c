@@ -6,7 +6,7 @@
 
 void write_log(char message[MSG_MAX]) {
   extern FILE *err_file;
-  fprintf(err_file, "%s\n\n", message);
+  fprintf(err_file, "%s\n", message);
 }
 
 void err_set(err_enum err_code, flag_t flag, const char *file, uint64_t line) {

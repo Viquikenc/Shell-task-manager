@@ -1,3 +1,10 @@
+/* if you are reading this, that means life has throwen us into this hell
+ * together, it turns out C is just a curse, looks like we got a lot of haters,
+ * anyway welcome my friend to a world where is no sleep and no happiness, hope
+ * you enjoy my cursed code. Btw I don't accept judges about the code so keep it
+ * for yourself. THANK YOU
+ */
+
 #include <dirent.h>
 #include <ncurses.h>
 #include <pthread.h>
@@ -14,11 +21,27 @@
 #define NANO_PER_SEC 1000000000
 
 FILE *err_file;
+uint64_t total_mem;
 
 static WINDOW *info_win;
 
 static void *KeyHandler(void *);
 static void SignalHandler(int signal);
+
+static inline int initInfo(uint64_t *total_mem) {
+  FILE *mem_file = fopen("/proc/meminfo", "r");
+  if (mem_file) {
+    if (fscanf(mem_file, "%*s %ld", total_mem)) {
+      return SUCCESS;
+    } else {
+      ERR_SET(ERR_SCAN_FILE, FATAL);
+      return ERR_SCAN_FILE;
+    }
+  } else {
+    ERR_SET(ERR_OPEN_FILE, FATAL);
+    return ERR_OPEN_FILE;
+  }
+}
 
 int main(int argc, char *argv[]) {
   TableHeaderElementStruct TableList[MAX] = {
@@ -31,18 +54,20 @@ int main(int argc, char *argv[]) {
       {"RES", (int)strlen("REST"), RES_MARG, RES},
       {"SHR", (int)strlen("SHR"), SHR_MARG, SHR},
       {"S", (int)strlen("S"), S_MARG, S},
-      {"CPU", (int)strlen("CPU"), CPU_MARG, CPU},
-      {"MEM", (int)strlen("MEM"), MEM_MARG, MEM},
+      {"CPU%", (int)strlen("CPU%"), CPU_MARG, CPU},
+      {"MEM%", (int)strlen("MEM%"), MEM_MARG, MEM},
       {"Time", (int)strlen("Time"), TIME_MARG, TIME},
       {"Command", (int)strlen("Command"), 0, COMMAND},
   };
 
   err_file = fopen("errors.log", "a+");
+  initInfo(&total_mem);
   initscr();
   cbreak();
   noecho();
   NewProccessElement Process;
-  int xMax, yMax; getmaxyx(stdscr, yMax, xMax);
+  int xMax, yMax;
+  getmaxyx(stdscr, yMax, xMax);
   info_win = newwin((3 * yMax) / 4, xMax, yMax / 4, 0);
 
   int current_pos = 1;

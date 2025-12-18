@@ -20,12 +20,12 @@
 #define CMD_PATH_SIZE 256
 
 typedef enum TableHeaderElementsMarginEnum {
-  PID_MARG = 1,
+  PID_MARG = 4,
   NAME_MARG = 18,
   USER_MARG = 5,
   PRI_MARG = 2,
   NI_MARG = 1,
-  VIRT_MARG = 5,
+  VIRT_MARG = 8,
   RES_MARG = 4,
   SHR_MARG = 4,
   S_MARG = 1,
@@ -61,8 +61,8 @@ typedef enum MaxTableElementsEnum {
   RES_MAX = RES_MARG + strlen("RES"),
   SHR_MAX = SHR_MARG + strlen("SHR"),
   S_MAX = S_MARG + strlen("S"),
-  CPU_MAX = CPU_MARG + strlen("CPU"),
-  MEM_MAX = MEM_MARG + strlen("MEM"),
+  CPU_MAX = CPU_MARG + strlen("CPU%"),
+  MEM_MAX = MEM_MARG + strlen("MEM%"),
   TIME_MAX = TIME_MARG + strlen("TIME")
 } MaxTableElementsEnum;
 
@@ -74,7 +74,7 @@ typedef struct TableHeaderElementStruct {
 } TableHeaderElementStruct;
 
 typedef struct NewProccessElement {
-  pid_t pid;                        //  int
+  pid_t pid;                        // int
   char name[NAME_SIZE];             // string
   char user[USER_SIZE];             // string
   int64_t priority;                 // signed long
@@ -97,8 +97,8 @@ int GetProcessCPUusage(float *cpu_usage, const time_t utime, const time_t stime,
                        const time_t cutime, const time_t cstime,
                        const uint128_t starttime);
 
-int GetProcessRAMusage(float *ram_usage, const pid_t pid,
-                       const uint64_t resident);
+void GetProcessRAMusage(float *ram_usage,
+                                      const uint64_t resident);
 
 int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid);
 

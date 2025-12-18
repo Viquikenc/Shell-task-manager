@@ -5,9 +5,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 #include <unistd.h>
 
-#include "Debug.h"
 #include "Menu.h"
 #include "error_handler.h"
 
@@ -15,31 +15,12 @@
 
 #define uint128_t unsigned long long
 
-// static TableHeaderElementStruct TableList[MAX] = {
-//     {"PID", (int)strlen("PID"), PID_MARG, PID},
-//     {"Name", (int)strlen("Name"), NAME_MARG, NAME},
-//     {"User", (int)strlen("User"), USER_MARG, USER},
-//     {"PRI", (int)strlen("PRI"), PRI_MARG, PRI},
-//     {"NI", (int)strlen("NI"), NI_MARG, NI},
-//     {"VIRT", (int)strlen("VIRT"), VIRT_MARG, VIRT},
-//     {"RES", (int)strlen("REST"), RES_MARG, RES},
-//     {"SHR", (int)strlen("SHR"), SHR_MARG, SHR},
-//     {"S", (int)strlen("S"), S_MARG, S},
-//     {"CPU", (int)strlen("CPU"), CPU_MARG, CPU},
-//     {"MEM", (int)strlen("MEM"), MEM_MARG, MEM},
-//     {"Time", (int)strlen("Time"), TIME_MARG, TIME},
-//     {"Command", (int)strlen("Command"), 0, COMMAND},
-// };
-
 union DataType {
-  int int_val;
-  int64_t int64_val;
-  uint64_t uint64_val;
-  long long_val;
+  long num_val;
   char *string_val;
 };
 
-enum DataEnum { INT, INT64, UINT64, LONG, STRING };
+enum DataEnum { NUM, STRING };
 
 struct DataStruct {
   enum DataEnum DATA;
@@ -68,7 +49,7 @@ typedef struct ProccessProperties {
   NewProccessElement process_info;
 } ProccessProperties;
 
-// Gets the username from the given uid
+/* Gets the user name of a process from the given uid */
 int GetUserFromUid(const pid_t uid, char user[USER_SIZE]) {
   struct passwd *pwd = getpwuid(uid);
   if (pwd != NULL) {
@@ -82,6 +63,8 @@ int GetUserFromUid(const pid_t uid, char user[USER_SIZE]) {
   }
 }
 
+/* it gets the shared memory of process process_pid and puts the result in
+ * sharedmem */
 int GetSharedMemSize(unsigned long *sharedmem, const pid_t process_id) {
   char path[32];
   FILE *file;
@@ -101,6 +84,12 @@ int GetSharedMemSize(unsigned long *sharedmem, const pid_t process_id) {
   }
 }
 
+/* it gets how much cpu does a process uses and puts it in cpu_usage in
+ * percentage. And if you wonder why it takes that much parameters, actually I
+ * have no idea, because it turns out you need so much infomation about time
+ * and cpu clock cycles and some other stuff and I recommand to not waste your
+ * time understanding it to just calculate the percentage in cpu_usage of a
+ * certain process */
 int GetProcessCPUusage(float *cpu_usage, const time_t utime, const time_t stime,
                        const time_t cutime, const time_t cstime,
                        const uint128_t starttime) {
@@ -124,7 +113,9 @@ int GetProcessCPUusage(float *cpu_usage, const time_t utime, const time_t stime,
   return SUCCESS;
 }
 
-int GetProcessFullPath(const pid_t pid, char *exe_path) {
+/* it gets the full executable of a process with its flags from pid and puts
+ * result in exe_path*/
+int GetProcessFullExcutable(const pid_t pid, char *exe_path) {
   char process_path[CMD_PATH_SIZE];
   (void)snprintf(process_path, sizeof(process_path), "/proc/%d/cmdline", pid);
   errno = 0;
@@ -149,28 +140,16 @@ int GetProcessFullPath(const pid_t pid, char *exe_path) {
   }
 }
 
-inline int GetProcessRAMusage(float *ram_usage, const pid_t pid,
-                              const uint64_t resident) {
-  FILE *total_mem_file;
-  uint64_t total_mem;
-  if ((total_mem_file = fopen("/proc/meminfo", "r")) != NULL) {
-    if (fscanf(total_mem_file, "%lu", &total_mem) != EOF) {
-      *ram_usage = 100.0 * ((float)resident / total_mem);
-      fclose(total_mem_file);
-      return SUCCESS;
-    } else {
-      ERR_SET(ERR_SCAN_FILE, WARNING);
-      fclose(total_mem_file);
-      return ERR_SCAN_FILE;
-    }
-  } else {
-    ERR_SET(ERR_OPEN_FILE, WARNING);
-    return ERR_OPEN_FILE;
-  }
+/* it gets how much ram does a process uses and puts it in ram_usage in
+ * percentage */
+void GetProcessRAMusage(float *ram_usage, const uint64_t resident) {
+
+  extern uint64_t total_mem;
+  *ram_usage = 100 * ((float)resident / total_mem);
 }
 
 /* this shit is for getting all the information about a process (ex. pid,
- * ram_usage, ...)*/
+ * ram_usage, ...) from /proc/pid/stat */
 int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid) {
   pid_t process_uid;
   char path[120];
@@ -200,7 +179,8 @@ int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid) {
         fclose(pid_file);
         return ERR_UNKNOWN;
       }
-      if (GetProcessFullPath(Process->pid, Process->command_path) != SUCCESS) {
+      if (GetProcessFullExcutable(Process->pid, Process->command_path) !=
+          SUCCESS) {
         fclose(pid_file);
         return ERR_UNKNOWN;
       }
@@ -209,11 +189,7 @@ int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid) {
         fclose(pid_file);
         return ERR_UNKNOWN;
       }
-      if (GetProcessRAMusage(&Process->mem, Process->pid, Process->resident) !=
-          SUCCESS) {
-        fclose(pid_file);
-        return ERR_UNKNOWN;
-      }
+      GetProcessRAMusage(&Process->mem, Process->resident);
       fclose(pid_file);
       return SUCCESS;
     } else {
@@ -227,28 +203,32 @@ int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid) {
   }
 }
 
+/* it takes your stupid variable which you type its properties in the data
+ * struct and then calculates how many characters in it (also with numbers) */
 static void GetNumOfDigits(const struct DataStruct data, uint8_t *num_digit) {
-  int result;
+  *num_digit = 1;
+  long result;
   switch (data.DATA) {
   case STRING:
     *num_digit = (uint8_t)strlen(data.data.string_val);
     break;
-  default:
-    result = data.data.int_val;
+  case NUM:
+    result = data.data.num_val;
     while (result > 9 || result < -9) {
       result /= 10;
       ++*num_digit;
     }
+    *num_digit += ((data.data.num_val < 0) ? 1 : 0);
     break;
   }
 }
 
 /* this is for displaying the process in your shit screen, this is one of the
- * reasons why GUI shouldn't exist */
+   reasons why GUI shouldn't exist */
 int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
                           NewProccessElement ProccessElement) {
   /* an array that stores all the properties in one array so you could access
-   * easily anything about a process */
+    easily anything about a process */
   ProccessProperties process[_COMMAND + 1] = {
       {INT_F, _PID, {.pid = ProccessElement.pid}},
       {STRING_F, _NAME},
@@ -264,27 +244,30 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
       {LONG_F, _TIME, {.time = ProccessElement.time}},
       {STRING_F, _COMMAND}};
 
+  /* since I can't pass the strings into the array directly due to C weird
+   rules, I am copying them to struct elment in the array */
+
   (void)strncpy(process[_NAME].process_info.name, ProccessElement.name,
                 NAME_SIZE - 1);
   (void)strncpy(process[_USER].process_info.user, ProccessElement.user,
                 USER_SIZE - 1);
   (void)strncpy(process[_COMMAND].process_info.command_path,
                 ProccessElement.command_path, CMD_PATH_SIZE - 1);
-  process[_COMMAND].process_info.command_path[CMD_PATH_SIZE - 1] = '\0';
   for (short i = _PID; i <= _COMMAND; ++i) {
-    // FIXME: change the inaccurate coordination for printing a
-    // process in the screen
     uint8_t digit_len = 0;
+    /* this is a switch where it when it enters to a certain case (_PID, _NAME,
+     _USER, ...) it does some calculation to make the curses ended up pointing
+     exactly at the beginning of the next property of the process */
     switch (i) {
     case _PID:
       GetNumOfDigits(
           (struct DataStruct){
-              INT, (union DataType){.int_val = process[i].process_info.pid}},
+              NUM,
+              (union DataType){.num_val = (long)process[i].process_info.pid}},
           &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.pid);
       xpos = getcurx(win) + (PID_MAX - digit_len);
-      DebugWriteNumInfo((long)digit_len);
       break;
     case _NAME:
       GetNumOfDigits(
@@ -293,9 +276,8 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
               (union DataType){.string_val = process[i].process_info.name}},
           &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.user);
-      xpos = getcurx(win) + (USER_MAX - digit_len);
-      DebugWriteNumInfo((long)digit_len);
+                process[i].process_info.name);
+      xpos = getcurx(win) + (NAME__MAX - digit_len);
       break;
     case _USER:
       GetNumOfDigits(
@@ -304,105 +286,91 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
               (union DataType){.string_val = process[i].process_info.user}},
           &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.name);
-      xpos = getcurx(win) + (NAME__MAX - digit_len);
-      DebugWriteNumInfo((long)digit_len);
+                process[i].process_info.user);
+      xpos = getcurx(win) + (USER_MAX - digit_len);
       break;
     case _PRI:
       GetNumOfDigits(
           (struct DataStruct){
-              INT64,
-              (union DataType){.int64_val = process[i].process_info.priority}},
+              NUM,
+              (union DataType){.num_val =
+                                   (long)process[i].process_info.priority}},
           &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.priority);
       xpos = getcurx(win) + (PRI_MAX - digit_len);
-      DebugWriteNumInfo((long)digit_len);
       break;
     case _NI:
       GetNumOfDigits(
           (struct DataStruct){
-              INT64,
-              (union DataType){.int64_val = process[i].process_info.nice}},
+              NUM,
+              (union DataType){.num_val = (long)process[i].process_info.nice}},
           &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.nice);
-      xpos = getcurx(win) + (NI_MAX - digit_len +
-                             ((process[i].process_info.nice < 0) ? 1 : 0));
-      DebugWriteNumInfo((long)digit_len);
+      xpos = getcurx(win) + (NI_MAX - digit_len);
       break;
     case _VIRT:
       GetNumOfDigits(
           (struct DataStruct){
-              UINT64, (union DataType){.uint64_val =
-                                           process[i].process_info.virtualmem}},
+              NUM,
+              (union DataType){.num_val =
+                                   (long)process[i].process_info.virtualmem}},
           &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.virtualmem);
       xpos = getcurx(win) + (VIRT_MAX - digit_len);
-      DebugWriteNumInfo((long)digit_len);
       break;
     case _RES:
       GetNumOfDigits(
           (struct DataStruct){
-              INT64,
-              (union DataType){.int_val = process[i].process_info.resident}},
+              NUM,
+              (union DataType){.num_val = process[i].process_info.resident}},
           &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.resident);
-      xpos = getcurx(win) + (RES_MAX - digit_len);
-      DebugWriteNumInfo((long)digit_len);
+      xpos = getcurx(win) + (RES_MAX + 1 - digit_len);
       break;
     case _SHR:
       GetNumOfDigits(
           (struct DataStruct){
-              UINT64,
-              (union DataType){.uint64_val = process[i].process_info.sharemem}},
+              NUM,
+              (union DataType){.num_val =
+                                   (long)process[i].process_info.sharemem}},
           &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.sharemem);
       xpos = getcurx(win) + (SHR_MAX - digit_len);
-      DebugWriteNumInfo((long)digit_len);
       break;
     case _S:
       digit_len = 1;
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.state);
       xpos = getcurx(win) + (S_MAX - digit_len);
-      DebugWriteNumInfo((long)digit_len);
       break;
     case _CPU:
       digit_len = 4;
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.cpu);
       xpos = getcurx(win) + (CPU_MAX - digit_len);
-      DebugWriteNumInfo((long)digit_len);
       break;
     case _MEM:
       digit_len = 4;
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.mem);
       xpos = getcurx(win) + (MEM_MAX - digit_len);
-      DebugWriteNumInfo((long)digit_len);
       break;
     case _TIME:
       GetNumOfDigits(
           (struct DataStruct){
-              LONG, (union DataType){.long_val = process[i].process_info.time}},
+              NUM,
+              (union DataType){.num_val = (long)process[i].process_info.time}},
           &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.time);
       xpos = getcurx(win) + (TIME_MAX - digit_len);
-      DebugWriteNumInfo((long)digit_len);
-      DebugWriteStringInfo("------------------------");
       break;
     case _COMMAND:
-      GetNumOfDigits(
-          (struct DataStruct){
-              STRING,
-              (union DataType){.string_val =
-                                   process[i].process_info.command_path}},
-          &digit_len);
       mvwprintw(win, ypos, xpos, process[i].format,
                 process[i].process_info.command_path);
       xpos = getcurx(win);
