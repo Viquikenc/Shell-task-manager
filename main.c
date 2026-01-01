@@ -19,31 +19,25 @@
 
 #define BASE_10 10
 #define NANO_PER_SEC 1000000000
-
+#define MAX_LINES 2000
+#define MAX_COLUMN 1700
 FILE *err_file;
 uint64_t total_mem;
 
 static WINDOW *info_win;
 
 static void *KeyHandler(void *);
-static void SignalHandler(int signal);
+static void SignalHandler(int);
+static inline int initInfo(uint64_t *);
 
-static inline int initInfo(uint64_t *total_mem) {
-  FILE *mem_file = fopen("/proc/meminfo", "r");
-  if (mem_file) {
-    if (fscanf(mem_file, "%*s %ld", total_mem)) {
-      return SUCCESS;
-    } else {
-      ERR_SET(ERR_SCAN_FILE, FATAL);
-      return ERR_SCAN_FILE;
-    }
-  } else {
-    ERR_SET(ERR_OPEN_FILE, FATAL);
-    return ERR_OPEN_FILE;
-  }
-}
+static int yMax;
+static int cam_y = 0;
+static int cursor_y = 0;
 
-int main(int argc, char *argv[]) {
+static int PAD_X;
+static int PAD_Y;
+
+int main(void) {
   TableHeaderElementStruct TableList[MAX] = {
       {"PID", (int)strlen("PID"), PID_MARG, PID},
       {"Name", (int)strlen("Name"), NAME_MARG, NAME},
@@ -65,33 +59,32 @@ int main(int argc, char *argv[]) {
   initscr();
   cbreak();
   noecho();
+  PAD_X = COLS - 1;
+  PAD_Y = LINES - 1;
   NewProccessElement Process;
-  int xMax, yMax;
+  int xMax;
   getmaxyx(stdscr, yMax, xMax);
-  info_win = newwin((3 * yMax) / 4, xMax, yMax / 4, 0);
-
+  info_win = newpad(PAD_Y + 100, PAD_X + 50);
   int current_pos = 1;
   int i = 0;
-
   do {
     mvprintw(yMax / 4 - 1, current_pos, "%s", TableList[i].name);
     current_pos += TableList[i].str_size + TableList[i].margin;
     i++;
   } while (i < MAX);
-
   mvchgat(yMax / 4 - 1, 0, xMax, A_STANDOUT, 0, NULL);
   refresh();
-  wrefresh(info_win);
+  prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
   keypad(info_win, TRUE);
   signal(SIGINT, SignalHandler);
   pthread_t pthread;
   pthread_create(&pthread, NULL, KeyHandler, NULL);
+  pthread_detach(pthread);
   struct timespec start, end;
   while (1) {
-    refresh();
+    werase(info_win);
+    prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
     clock_gettime(CLOCK_MONOTONIC, &start);
-    uint16_t xpos = 1;
-    uint16_t ypos = 0;
     pid_t pid = 1;
     DIR *dir = opendir("/proc");
     char *endptr;
@@ -100,40 +93,74 @@ int main(int argc, char *argv[]) {
       pid = strtol(pid_dir->d_name, &endptr, BASE_10);
       if (pid != 0) {
         if (GetProcessInfoFromFile(&Process, pid) == SUCCESS &&
-            WinCreateProccessItem(info_win, xpos, ypos, Process) == SUCCESS) {
-          ypos += 1;
-          wrefresh(info_win);
+            WinCreateProccessItem(info_win, Process) == SUCCESS) {
+          prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
         }
       }
     }
     closedir(dir);
-    wrefresh(info_win);
     clock_gettime(CLOCK_MONOTONIC, &end);
     long elapsed_ns = (end.tv_sec - start.tv_sec) * NANO_PER_SEC +
                       (end.tv_nsec - start.tv_nsec);
     if (elapsed_ns < NANO_PER_SEC) {
       long remaining_ns = NANO_PER_SEC - elapsed_ns;
-      struct timespec sleep_time = {.tv_sec = 0, .tv_nsec = remaining_ns};
+      struct timespec sleep_time = {.tv_sec = 2, .tv_nsec = remaining_ns};
       nanosleep(&sleep_time, NULL);
-      wclear(info_win);
-    } else {
-      wclear(info_win);
     }
+    prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
   }
   endwin();
   return 0;
 }
 
 static void *KeyHandler(void *arg) {
+  int max_y = getmaxy(stdscr) - (yMax / 4);
+  cursor_y = 0;
+  int min_y = 0;
   while (1) {
     int key = getch();
     if (key == 'q') {
       delwin(info_win);
+      delwin(stdscr);
       endwin();
       exit(0);
+    } else if (key == 'j') {
+      if ((++cursor_y) >= max_y) {
+        ++min_y, ++max_y;
+        wmove(info_win, cursor_y, 0);
+        prefresh(info_win, ++cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
+      } else {
+        wmove(info_win, cursor_y, 0);
+        prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
+      }
+    } else if (key == 'k') {
+      if ((--cursor_y) < min_y) {
+        min_y -= (min_y <= 0) ? 0 : 1;
+        max_y -= (max_y < (getmaxy(stdscr) - (yMax / 4))) ? 0 : 1;
+        cursor_y = (cursor_y < 0) ? 0 : cursor_y;
+        wmove(info_win, cursor_y, 0);
+        prefresh(info_win, --cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
+      } else {
+        wmove(info_win, cursor_y, 0);
+        prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
+      }
     }
   }
-  return 0;
+}
+
+static inline int initInfo(uint64_t *total_mem) {
+  FILE *mem_file = fopen("/proc/meminfo", "r");
+  if (mem_file) {
+    if (fscanf(mem_file, "%*s %ld", total_mem)) {
+      return SUCCESS;
+    } else {
+      ERR_SET(ERR_SCAN_FILE, FATAL);
+      return ERR_SCAN_FILE;
+    }
+  } else {
+    ERR_SET(ERR_OPEN_FILE, FATAL);
+    return ERR_OPEN_FILE;
+  }
 }
 
 static void SignalHandler(int signal) {

@@ -4,7 +4,7 @@ CWARN=-Wall -Werror -Wpedantic
 
 main: main.c
 	$(CC) main.c Menu.c error_handler.c Debug.c -o main $(CFLAGS) $(CWARN)
-nopedantic:
+noped:
 	$(CC) main.c Menu.c error_handler.c Debug.c -o main $(CFLAGS) -Wall -Werror
 
 clean:

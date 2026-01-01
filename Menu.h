@@ -36,8 +36,8 @@ typedef enum TableHeaderElementsMarginEnum {
 
 typedef enum TableHeaderElementsEnum {
   PID,
-  USER,
   NAME,
+  USER,
   PRI,
   NI,
   VIRT,
@@ -58,7 +58,7 @@ typedef enum MaxTableElementsEnum {
   PRI_MAX = PRI_MARG + strlen("PRI"),
   NI_MAX = NI_MARG + strlen("NI"),
   VIRT_MAX = VIRT_MARG + strlen("VIRT"),
-  RES_MAX = RES_MARG + strlen("RES"),
+  RES_MAX = RES_MARG + 1 + strlen("RES"),
   SHR_MAX = SHR_MARG + strlen("SHR"),
   S_MAX = S_MARG + strlen("S"),
   CPU_MAX = CPU_MARG + strlen("CPU%"),
@@ -97,12 +97,11 @@ int GetProcessCPUusage(float *cpu_usage, const time_t utime, const time_t stime,
                        const time_t cutime, const time_t cstime,
                        const uint128_t starttime);
 
-void GetProcessRAMusage(float *ram_usage,
-                                      const uint64_t resident);
+void GetProcessRAMusage(float *ram_usage, const uint64_t resident);
 
 int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid);
 
-int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
+int WinCreateProccessItem(WINDOW *win,
                           const NewProccessElement ProccessElement);
 
 int GetProcessFullPath(const pid_t pid, char *exe_path);

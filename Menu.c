@@ -151,7 +151,6 @@ void GetProcessRAMusage(float *ram_usage, const uint64_t resident) {
 /* this shit is for getting all the information about a process (ex. pid,
  * ram_usage, ...) from /proc/pid/stat */
 int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid) {
-  pid_t process_uid;
   char path[120];
   unsigned long stime;
   unsigned long utime;
@@ -161,6 +160,8 @@ int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid) {
   (void)snprintf(path, sizeof(path), "/proc/%d/stat", pid);
   FILE *pid_file;
   if ((pid_file = fopen(path, "r")) != NULL) {
+    pid_t process_uid = 0;
+    process_uid = 10;
     int throw = fscanf(
         pid_file,
         "%d %s %c %d %*d %*d %*d %*d %*d %*d %*d %*d %*d %lu %lu "
@@ -207,13 +208,12 @@ int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid) {
  * struct and then calculates how many characters in it (also with numbers) */
 static void GetNumOfDigits(const struct DataStruct data, uint8_t *num_digit) {
   *num_digit = 1;
-  long result;
+  long result = data.data.num_val;
   switch (data.DATA) {
   case STRING:
     *num_digit = (uint8_t)strlen(data.data.string_val);
     break;
   case NUM:
-    result = data.data.num_val;
     while (result > 9 || result < -9) {
       result /= 10;
       ++*num_digit;
@@ -225,10 +225,10 @@ static void GetNumOfDigits(const struct DataStruct data, uint8_t *num_digit) {
 
 /* this is for displaying the process in your shit screen, this is one of the
    reasons why GUI shouldn't exist */
-int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
-                          NewProccessElement ProccessElement) {
-  /* an array that stores all the properties in one array so you could access
-    easily anything about a process */
+int WinCreateProccessItem(WINDOW *win, NewProccessElement ProccessElement) {
+  /* an array that stores all the
+   * properties in one array so you could access easily anything about a process
+   */
   ProccessProperties process[_COMMAND + 1] = {
       {INT_F, _PID, {.pid = ProccessElement.pid}},
       {STRING_F, _NAME},
@@ -245,7 +245,8 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
       {STRING_F, _COMMAND}};
 
   /* since I can't pass the strings into the array directly due to C weird
-   rules, I am copying them to struct elment in the array */
+   * rules, I am copying them to struct's string elements in the array
+   */
 
   (void)strncpy(process[_NAME].process_info.name, ProccessElement.name,
                 NAME_SIZE - 1);
@@ -256,18 +257,20 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
   for (short i = _PID; i <= _COMMAND; ++i) {
     uint8_t digit_len = 0;
     /* this is a switch where it when it enters to a certain case (_PID, _NAME,
-     _USER, ...) it does some calculation to make the curses ended up pointing
-     exactly at the beginning of the next property of the process */
+     * _USER, ...) it does some calculation to make the curses ended up pointing
+     * exactly at the beginning of the next property of the process */
     switch (i) {
     case _PID:
+      // this is just making making space at beginning of each line
+      wprintw(win, " ");
       GetNumOfDigits(
           (struct DataStruct){
               NUM,
               (union DataType){.num_val = (long)process[i].process_info.pid}},
           &digit_len);
-      mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.pid);
-      xpos = getcurx(win) + (PID_MAX - digit_len);
+      wprintw(win, process[i].format, process[i].process_info.pid);
+      for (char i = 1; i <= (PID_MAX - digit_len); ++i)
+        wprintw(win, " ");
       break;
     case _NAME:
       GetNumOfDigits(
@@ -275,9 +278,9 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
               STRING,
               (union DataType){.string_val = process[i].process_info.name}},
           &digit_len);
-      mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.name);
-      xpos = getcurx(win) + (NAME__MAX - digit_len);
+      wprintw(win, process[i].format, process[i].process_info.name);
+      for (char i = 1; i <= (NAME__MAX - digit_len); ++i)
+        wprintw(win, " ");
       break;
     case _USER:
       GetNumOfDigits(
@@ -285,9 +288,9 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
               STRING,
               (union DataType){.string_val = process[i].process_info.user}},
           &digit_len);
-      mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.user);
-      xpos = getcurx(win) + (USER_MAX - digit_len);
+      wprintw(win, process[i].format, process[i].process_info.user);
+      for (char i = 1; i <= (USER_MAX - digit_len); ++i)
+        wprintw(win, " ");
       break;
     case _PRI:
       GetNumOfDigits(
@@ -296,9 +299,9 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
               (union DataType){.num_val =
                                    (long)process[i].process_info.priority}},
           &digit_len);
-      mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.priority);
-      xpos = getcurx(win) + (PRI_MAX - digit_len);
+      wprintw(win, process[i].format, process[i].process_info.priority);
+      for (char i = 1; i <= (PRI_MAX - digit_len); ++i)
+        wprintw(win, " ");
       break;
     case _NI:
       GetNumOfDigits(
@@ -306,9 +309,9 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
               NUM,
               (union DataType){.num_val = (long)process[i].process_info.nice}},
           &digit_len);
-      mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.nice);
-      xpos = getcurx(win) + (NI_MAX - digit_len);
+      wprintw(win, process[i].format, process[i].process_info.nice);
+      for (char i = 1; i <= (NI_MAX - digit_len); ++i)
+        wprintw(win, " ");
       break;
     case _VIRT:
       GetNumOfDigits(
@@ -317,9 +320,9 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
               (union DataType){.num_val =
                                    (long)process[i].process_info.virtualmem}},
           &digit_len);
-      mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.virtualmem);
-      xpos = getcurx(win) + (VIRT_MAX - digit_len);
+      wprintw(win, process[i].format, process[i].process_info.virtualmem);
+      for (char i = 1; i <= (VIRT_MAX - digit_len); ++i)
+        wprintw(win, " ");
       break;
     case _RES:
       GetNumOfDigits(
@@ -327,9 +330,9 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
               NUM,
               (union DataType){.num_val = process[i].process_info.resident}},
           &digit_len);
-      mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.resident);
-      xpos = getcurx(win) + (RES_MAX + 1 - digit_len);
+      wprintw(win, process[i].format, process[i].process_info.resident);
+      for (char i = 1; i <= (RES_MAX - digit_len); ++i)
+        wprintw(win, " ");
       break;
     case _SHR:
       GetNumOfDigits(
@@ -338,27 +341,27 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
               (union DataType){.num_val =
                                    (long)process[i].process_info.sharemem}},
           &digit_len);
-      mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.sharemem);
-      xpos = getcurx(win) + (SHR_MAX - digit_len);
+      wprintw(win, process[i].format, process[i].process_info.sharemem);
+      for (char i = 1; i <= (SHR_MAX - digit_len); ++i)
+        wprintw(win, " ");
       break;
     case _S:
       digit_len = 1;
-      mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.state);
-      xpos = getcurx(win) + (S_MAX - digit_len);
+      wprintw(win, process[i].format, process[i].process_info.state);
+      for (char i = 1; i <= (S_MAX - digit_len); ++i)
+        wprintw(win, " ");
       break;
     case _CPU:
       digit_len = 4;
-      mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.cpu);
-      xpos = getcurx(win) + (CPU_MAX - digit_len);
+      wprintw(win, process[i].format, process[i].process_info.cpu);
+      for (char i = 1; i <= (CPU_MAX - digit_len); ++i)
+        wprintw(win, " ");
       break;
     case _MEM:
       digit_len = 4;
-      mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.mem);
-      xpos = getcurx(win) + (MEM_MAX - digit_len);
+      wprintw(win, process[i].format, process[i].process_info.mem);
+      for (char i = 1; i <= (MEM_MAX - digit_len); ++i)
+        wprintw(win, " ");
       break;
     case _TIME:
       GetNumOfDigits(
@@ -366,14 +369,13 @@ int WinCreateProccessItem(WINDOW *win, uint16_t xpos, const uint16_t ypos,
               NUM,
               (union DataType){.num_val = (long)process[i].process_info.time}},
           &digit_len);
-      mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.time);
-      xpos = getcurx(win) + (TIME_MAX - digit_len);
+      wprintw(win, process[i].format, process[i].process_info.time);
+      for (char i = 1; i <= (TIME_MAX - digit_len); ++i)
+        wprintw(win, " ");
       break;
     case _COMMAND:
-      mvwprintw(win, ypos, xpos, process[i].format,
-                process[i].process_info.command_path);
-      xpos = getcurx(win);
+      wprintw(win, process[i].format, process[i].process_info.command_path);
+      wprintw(win, "\n");
       break;
     }
   }
