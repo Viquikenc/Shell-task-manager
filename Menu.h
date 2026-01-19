@@ -5,19 +5,26 @@
 #include <string.h>
 #include <sys/types.h>
 
-#define INT_F "%d"
-#define UINT64_F "%lu"
-#define INT64_F "%ld"
-#define STRING_F "%s"
-#define CHAR_F "%c"
-#define FLOAT_F "%.2f"
-#define LONG_F "%ld"
+#define PID_F "%d"
+#define NAME_F "%s"
+#define USER_F "%s"
+#define PRIORITY_F "%ld"
+#define NICE_F "%ld"
+#define VIRTUALMEM_F "%lu"
+#define RESIDENT_F "%ld"
+#define SHAREMEM_F "%u"
+#define STATE_F "%c"
+#define CPU_F "%.2f"
+#define MEM_F "%.2f"
+#define TIME_F "%ld"
+#define COMMAND_PATH_F "%s"
 
-#define uint128_t unsigned long long
+#define NUM_FLAG (1 << 0)
+#define STR_FLAG (1 << 1)
 
 #define NAME_SIZE 32
 #define USER_SIZE 16
-#define CMD_PATH_SIZE 256
+#define CMD_PATH_SIZE 64
 
 typedef enum TableHeaderElementsMarginEnum {
   PID_MARG = 4,
@@ -66,6 +73,23 @@ typedef enum MaxTableElementsEnum {
   TIME_MAX = TIME_MARG + strlen("TIME")
 } MaxTableElementsEnum;
 
+typedef enum ProcessDataEnum {
+  _PID,
+  _NAME,
+  _USER,
+  _PRI,
+  _NI,
+  _VIRT,
+  _RES,
+  _SHR,
+  _S,
+  _CPU,
+  _MEM,
+  _TIME,
+  _COMMAND,
+  _MAX
+} ProcessDataEnum;
+
 typedef struct TableHeaderElementStruct {
   char *name;
   int str_size;
@@ -73,37 +97,55 @@ typedef struct TableHeaderElementStruct {
   TableHeaderElementsEnum pos;
 } TableHeaderElementStruct;
 
-typedef struct NewProccessElement {
-  pid_t pid;                        // int
-  char name[NAME_SIZE];             // string
-  char user[USER_SIZE];             // string
-  int64_t priority;                 // signed long
-  int64_t nice;                     // signed long
-  uint64_t virtualmem;              // unsigned long
-  int64_t resident;                 // signed long
-  uint64_t sharemem;                // unsigned
-  char state;                       // char
-  float cpu;                        // float
-  float mem;                        // float
-  time_t time;                      // long
-  char command_path[CMD_PATH_SIZE]; // string
-} NewProccessElement;
+typedef struct ProcStatProperties {
+  union {
+    pid_t pid_type;                        // int
+    char name_type[NAME_SIZE];             // string
+    char user_type[USER_SIZE];             // string
+    int64_t priority_type;                 // signed long
+    int64_t nice_type;                     // signed long
+    uint64_t virtualmem_type;              // unsigned long
+    int64_t resident_type;                 // signed long
+    uint64_t sharemem_type;                // unsigned
+    char state_type;                       // char
+    float cpu_type;                        // float
+    float mem_type;                        // float
+    time_t time_type;                      // long
+    char command_path_type[CMD_PATH_SIZE]; // string
+  };
+  char format[16];
+  void *data;
+} ProcStatProperties;
+
+typedef struct Process {
+  ProcStatProperties pid;          // int
+  ProcStatProperties name;         // string
+  ProcStatProperties user;         // string
+  ProcStatProperties priority;     // signed long
+  ProcStatProperties nice;         // signed long
+  ProcStatProperties virtualmem;   // unsigned long
+  ProcStatProperties resident;     // signed long
+  ProcStatProperties sharemem;     // unsigned
+  ProcStatProperties state;        // char
+  ProcStatProperties cpu;          // float
+  ProcStatProperties mem;          // float
+  ProcStatProperties time;         // long
+  ProcStatProperties command_path; // string
+} Process;
 
 int GetUserFromUid(const pid_t uid, char user[USER_SIZE]);
 
-int GetSharedMemSize(unsigned long *sharedmem, const pid_t process_id);
+int GetProcessInfoFromFile(Process **, const pid_t pid);
 
-int GetProcessCPUusage(float *cpu_usage, const time_t utime, const time_t stime,
-                       const time_t cutime, const time_t cstime,
-                       const uint128_t starttime);
+void ProcessMemCpy(Process *from, Process **to);
 
-void GetProcessRAMusage(float *ram_usage, const uint64_t resident);
+Process *InitProcess();
 
-int GetProcessInfoFromFile(NewProccessElement *Process, const pid_t pid);
+void FreeProcess(Process *);
 
-int WinCreateProccessItem(WINDOW *win,
-                          const NewProccessElement ProccessElement);
+void PrintProcessItem(WINDOW *, const Process, const int at_y);
 
-int GetProcessFullPath(const pid_t pid, char *exe_path);
+void CreateProcessItem(Process ProccessElement, const int print_y,
+                       const int print_x);
 
 #endif

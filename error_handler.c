@@ -9,7 +9,7 @@ void write_log(char message[MSG_MAX]) {
   fprintf(err_file, "%s\n", message);
 }
 
-void err_set(err_enum err_code, flag_t flag, const char *file, uint64_t line) {
+int err_set(err_enum err_code, flag_t flag, const char *file, uint64_t line) {
   char message[MSG_MAX] = {0};
   if ((flag & FATAL) || (flag & WARNING))
     switch (err_code) {
@@ -54,4 +54,5 @@ void err_set(err_enum err_code, flag_t flag, const char *file, uint64_t line) {
       write_log(message);
       break;
     }
+  return err_code;
 }

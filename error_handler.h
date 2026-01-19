@@ -30,9 +30,9 @@ typedef struct err_handl {
   char *func;
 } err_handl;
 
-void err_set(err_enum err_code, flag_t flag, const char *file, uint64_t line);
+int err_set(err_enum err_code, flag_t flag, const char *file, uint64_t line);
 void write_log(char message[MSG_MAX]);
 
-#define ERR_SET(err, flag) err_set(err, flag, __FILE__, __LINE__)
+#define ERR_SET(err, flag) err_set((err), (flag), __FILE__, __LINE__)
 
 #endif
