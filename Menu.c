@@ -88,12 +88,12 @@ static int GetProcessFullExcutable(const pid_t pid, char *exe_path) {
     ERR_SET(ERR_UNKNOWN, IGNORED);
     return ERR_UNKNOWN;
   }
-  size_t readen_bytes =
+  size_t readed_bytes =
       fread(process_path, 1, sizeof(process_path), process_path_cmd);
-  if (readen_bytes > 0) {
-    for (size_t i = 0; i < readen_bytes; i++)
+  if (readed_bytes > 0) {
+    for (size_t i = 0; i < readed_bytes; i++)
       exe_path[i] = (process_path[i] == '\0') ? ' ' : process_path[i];
-    exe_path[readen_bytes] = '\0';
+    exe_path[readed_bytes] = '\0';
     fclose(process_path_cmd);
     return SUCCESS;
   } else {
@@ -119,27 +119,21 @@ static inline void GetProcessRAMusage(float *ram_usage,
 static int GetNumOfDigits(int type_flag, void *data) {
   size_t num_digits = 1;
   long buf = 0;
-  DebugWriteStringInfo("GetNumOfDigits -----------");
-  DebugWriteStringInfo((char *)data);
   switch (type_flag) {
   case STR_FLAG:
     num_digits = (uint8_t)strlen((char *)data);
     break;
   case NUM_FLAG:
-    buf = *(long *)data;
-    while (buf > 9 || buf < -9) {
-      buf /= 10;
-      ++num_digits;
-    }
-    num_digits += ((*(long *)data < 0) ? 1 : 0);
+    for (buf = *(long *)data; buf > 9 || buf < -9; buf /= 10, ++num_digits)
+      ;
     break;
   default:
-    num_digits = -1;
+    num_digits = 0;
   }
-  return num_digits;
+  return (buf < 0) ? ++num_digits : num_digits;
 }
 
-/* Copies all data/memory of [from] to [to]
+/* Copies all data/memory from [from] to [to]
  */
 void ProcessMemCpy(Process *from, Process **to) {
   memcpy((*to)->pid.data, from->pid.data, sizeof(from->pid.pid_type));
@@ -233,11 +227,11 @@ Process *InitProcess() {
  */
 static void MergeNeededSpace(char *string, const size_t size) {
   size_t num_chars = GetNumOfDigits(STR_FLAG, string);
-  size_t left_chars = size - num_chars;
+  int16_t left_chars = size - num_chars;
   if (left_chars <= 0)
     return;
   for (; left_chars > 0; --left_chars)
-    strcat(string, "+");
+    strcat(string, " ");
 }
 
 static void ClearProcessFormat(Process **process) {
@@ -259,34 +253,22 @@ static void ClearProcessFormat(Process **process) {
 /* Freeing all data in the [process] and itself
  */
 void FreeProcess(Process *process) {
-  if (process->pid.data != NULL)
-    free(process->pid.data);
-  if (process->name.data != NULL)
-    free(process->name.data);
-  if (process->user.data != NULL)
-    free(process->user.data);
-  if (process->priority.data != NULL)
-    free(process->priority.data);
-  if (process->nice.data != NULL)
-    free(process->nice.data);
-  if (process->virtualmem.data != NULL)
-    free(process->virtualmem.data);
-  if (process->resident.data != NULL)
-    free(process->resident.data);
-  if (process->sharemem.data != NULL)
-    free(process->sharemem.data);
-  if (process->state.data != NULL)
-    free(process->state.data);
-  if (process->cpu.data != NULL)
-    free(process->cpu.data);
-  if (process->mem.data != NULL)
-    free(process->mem.data);
-  if (process->time.data != NULL)
-    free(process->time.data);
-  if (process->command_path.data != NULL)
-    free(process->command_path.data);
-  if (process != NULL)
-    free(process);
+  if (process == NULL)
+    return;
+  free(process->pid.data);
+  free(process->name.data);
+  free(process->user.data);
+  free(process->priority.data);
+  free(process->nice.data);
+  free(process->virtualmem.data);
+  free(process->resident.data);
+  free(process->sharemem.data);
+  free(process->state.data);
+  free(process->cpu.data);
+  free(process->mem.data);
+  free(process->time.data);
+  free(process->command_path.data);
+  free(process);
 }
 
 /* Collecting that stats of a process of id [pid] and store them in
@@ -295,18 +277,17 @@ void FreeProcess(Process *process) {
 int GetProcessInfoFromFile(Process **process, const pid_t pid) {
   Process *temp_process = InitProcess();
   char path[120];
-  unsigned long stime = 0;
-  unsigned long utime = 0;
-  time_t cutime = 0;
-  time_t cstime = 0;
+  unsigned long stime = 0, utime = 0;
+  time_t cutime = 0, cstime = 0;
   uint64_t starttime = 0;
+  pid_t process_uid = 0;
+
   (void)snprintf(path, sizeof(path), "/proc/%d/stat", pid);
   FILE *pid_file;
   if ((pid_file = fopen(path, "r")) == NULL) {
     ERR_SET(ERR_OPEN_FILE, WARNING);
     return ERR_OPEN_FILE;
   }
-  pid_t process_uid = 0;
   int throw = fscanf(
       pid_file,
       "%d %s %c %d %*d %*d %*d %*d %*d %*d %*d %*d %*d %lu %lu "
@@ -320,8 +301,8 @@ int GetProcessInfoFromFile(Process **process, const pid_t pid) {
 
   DebugWriteStringInfo("the string infos of the string are : -> ");
   DebugWriteStringInfo((char *)temp_process->name.data);
-  DebugWriteStringInfo((char *)temp_process->user.data);
   DebugWriteNumInfo(*(int64_t *)temp_process->resident.data);
+
   if (throw == EOF) {
     ERR_SET(ERR_SCAN_FILE, WARNING);
     FreeProcess(temp_process);
@@ -334,6 +315,8 @@ int GetProcessInfoFromFile(Process **process, const pid_t pid) {
     FreeProcess(temp_process);
     return ERR_UNKNOWN;
   }
+  DebugWriteStringInfo("the user string is -> ");
+  DebugWriteStringInfo((char *)temp_process->user.data);
   if (GetSharedMemSize((uint64_t *)temp_process->sharemem.data,
                        *(pid_t *)temp_process->pid.data) != SUCCESS) {
     fclose(pid_file);

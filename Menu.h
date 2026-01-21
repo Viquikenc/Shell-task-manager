@@ -25,6 +25,7 @@
 #define NAME_SIZE 32
 #define USER_SIZE 16
 #define CMD_PATH_SIZE 64
+#define FORMAT_SIZE 32
 
 typedef enum TableHeaderElementsMarginEnum {
   PID_MARG = 4,
@@ -113,7 +114,7 @@ typedef struct ProcStatProperties {
     time_t time_type;                      // long
     char command_path_type[CMD_PATH_SIZE]; // string
   };
-  char format[16];
+  char format[FORMAT_SIZE];
   void *data;
 } ProcStatProperties;
 

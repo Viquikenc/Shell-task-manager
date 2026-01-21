@@ -80,9 +80,11 @@ int main(void) {
     FreeProcess(process);
     endwin();
     fclose(err_file);
+    exit(1);
   }
   keypad(info_win, TRUE);
   signal(SIGINT, SignalHandler);
+  signal(SIGSEGV, SignalHandler);
   pthread_t pthread;
   pthread_create(&pthread, NULL, KeyHandler, NULL);
   pthread_detach(pthread);
