@@ -24,7 +24,9 @@
 FILE *err_file;
 uint64_t total_mem;
 
-static WINDOW *info_win;
+static WINDOW *info_win = NULL;
+
+static Process *process = NULL;
 
 static void *KeyHandler(void *);
 static void SignalHandler(int);
@@ -35,7 +37,7 @@ static int xMax;
 
 static int print_y = 0;
 
-static int max_elements;
+static int max_elements = 0;
 
 static int cursor_x = 0;
 static int cursor_y = 0;
@@ -52,7 +54,7 @@ static TableHeaderElementStruct TableList[MAX] = {
     {"PRI", (int)strlen("PRI"), PRI_MARG, PRI},
     {"NI", (int)strlen("NI"), NI_MARG, NI},
     {"VIRT", (int)strlen("VIRT"), VIRT_MARG, VIRT},
-    {"RES", (int)strlen("REST"), RES_MARG, RES},
+    {"RES", (int)strlen("RES"), RES_MARG, RES},
     {"SHR", (int)strlen("SHR"), SHR_MARG, SHR},
     {"S", (int)strlen("S"), S_MARG, S},
     {"CPU%", (int)strlen("CPU%"), CPU_MARG, CPU},
@@ -61,19 +63,19 @@ static TableHeaderElementStruct TableList[MAX] = {
     {"Command", (int)strlen("Command"), 0, COMMAND},
 };
 
-static Process *process = NULL;
-
 int main(void) {
-  err_file = fopen("errors.log", "a+");
+  err_file = fopen("errors.log", "a");
   initscr();
   cbreak();
   noecho();
   getmaxyx(stdscr, yMax, xMax);
   PAD_X = COLS - 1;
   PAD_Y = LINES - 1;
+  // initialising new pad ( more flexiable window )
   info_win = newpad(PAD_Y + 100, PAD_X + 50);
   prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
   initInfo(&total_mem);
+
   if ((process = InitProcess()) == NULL) {
     delwin(info_win);
     delwin(stdscr);
@@ -82,19 +84,24 @@ int main(void) {
     fclose(err_file);
     exit(1);
   }
+
+  // enabling keys like (up-arrow, down-arrow, F1, F2, ...)
   keypad(info_win, TRUE);
   signal(SIGINT, SignalHandler);
   signal(SIGSEGV, SignalHandler);
   pthread_t pthread;
   pthread_create(&pthread, NULL, KeyHandler, NULL);
   pthread_detach(pthread);
+  // the start of the program.
   while (1) {
+    print_y = 0;
+    max_elements = 0;
+    // erasing the content of the [info_win]
     werase(info_win);
-    wmove(info_win, cursor_y, cursor_x);
-    prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
     pid_t pid = 1;
     DIR *dir = opendir("/proc");
     struct dirent *pid_dir;
+    // reading every directory/file names in /proc
     while ((pid_dir = readdir(dir))) {
       pid = strtol(pid_dir->d_name, NULL, BASE_10);
       if (pid == 0)
@@ -102,13 +109,17 @@ int main(void) {
       if (GetProcessInfoFromFile(&process, pid) != SUCCESS)
         continue;
       PrintProcessItem(info_win, *process, print_y++);
-      prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
       ++max_elements;
     }
     closedir(dir);
+    // moving the cursor to a certain pos according to [cursor_y] & [cursor_x]
+    wmove(info_win, cursor_y, cursor_x);
+    // refreshing the content of the pad
     prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
     sleep(2);
   }
+  // freeing ncurses (but still many allocated data that's not freed by ncurses
+  // and I can't free it)
   endwin();
   return 0;
 }
@@ -156,28 +167,22 @@ static void *KeyHandler(void *arg) {
 
 static int initInfo(uint64_t *total_mem) {
   FILE *mem_file = fopen("/proc/meminfo", "r");
-  if (mem_file) {
-    if (fscanf(mem_file, "%*s %lu", total_mem)) {
-      max_elements = 0;
-      int current_pos = 1;
-      int i = 0;
-      do {
-        mvprintw(yMax / 4 - 1, current_pos, "%s", TableList[i].name);
-        current_pos += TableList[i].str_size + TableList[i].margin;
-        i++;
-      } while (i < MAX);
-      mvchgat(yMax / 4 - 1, 0, xMax, A_STANDOUT, 0, NULL);
-      refresh();
-      fclose(mem_file);
-      return SUCCESS;
-    } else {
-      ERR_SET(ERR_SCAN_FILE, FATAL);
-      return ERR_SCAN_FILE;
-    }
-  } else {
+  if (mem_file == NULL) {
     ERR_SET(ERR_OPEN_FILE, FATAL);
     return ERR_OPEN_FILE;
   }
+  if (fscanf(mem_file, "%*s %lu", total_mem) == EOF) {
+    ERR_SET(ERR_SCAN_FILE, FATAL);
+    return ERR_SCAN_FILE;
+  }
+  for (int i = 0, current_pos = 1; i < MAX;
+       current_pos += TableList[i].str_size + TableList[i].margin, ++i)
+    mvprintw(yMax / 4 - 1, current_pos, "%s", TableList[i].name);
+
+  mvchgat(yMax / 4 - 1, 0, xMax, A_STANDOUT, 0, NULL);
+  refresh();
+  fclose(mem_file);
+  return SUCCESS;
 }
 
 static void SignalHandler(int signal) {

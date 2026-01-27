@@ -8,7 +8,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "Debug.h"
 #include "Menu.h"
 #include "error_handler.h"
 
@@ -112,27 +111,6 @@ static inline void GetProcessRAMusage(float *ram_usage,
   *ram_usage = 100 * ((float)resident / total_mem);
 }
 
-/* Calculating the number of character/symbols in [data] with type of
- * [type_flag]. Returns the number of digits obtained otherwise -1 if an error
- * occured
- */
-static int GetNumOfDigits(int type_flag, void *data) {
-  size_t num_digits = 1;
-  long buf = 0;
-  switch (type_flag) {
-  case STR_FLAG:
-    num_digits = (uint8_t)strlen((char *)data);
-    break;
-  case NUM_FLAG:
-    for (buf = *(long *)data; buf > 9 || buf < -9; buf /= 10, ++num_digits)
-      ;
-    break;
-  default:
-    num_digits = 0;
-  }
-  return (buf < 0) ? ++num_digits : num_digits;
-}
-
 /* Copies all data/memory from [from] to [to]
  */
 void ProcessMemCpy(Process *from, Process **to) {
@@ -162,49 +140,35 @@ void ProcessMemCpy(Process *from, Process **to) {
  */
 Process *InitProcess() {
   Process *process = malloc(sizeof(Process));
-  if (process == NULL)
-    return NULL;
+  CHECK_NULL_(process);
   process->pid.data = malloc(sizeof(process->pid.pid_type));
-  if (process->pid.data == NULL)
-    return NULL;
+  CHECK_NULL_(process->pid.data);
   process->name.data = malloc(sizeof(process->name.name_type));
-  if (process->name.data == NULL)
-    return NULL;
+  CHECK_NULL_(process->name.data);
   process->user.data = malloc(sizeof(process->user.user_type));
-  if (process->user.data == NULL)
-    return NULL;
+  CHECK_NULL_(process->user.data);
   process->priority.data = malloc(sizeof(process->priority.priority_type));
-  if (process->priority.data == NULL)
-    return NULL;
+  CHECK_NULL_(process->priority.data);
   process->nice.data = malloc(sizeof(process->nice.nice_type));
-  if (process->nice.data == NULL)
-    return NULL;
+  CHECK_NULL_(process->nice.data);
   process->virtualmem.data =
       malloc(sizeof(process->virtualmem.virtualmem_type));
-  if (process->virtualmem.data == NULL)
-    return NULL;
+  CHECK_NULL_(process->virtualmem.data);
   process->resident.data = malloc(sizeof(process->resident.resident_type));
-  if (process->resident.data == NULL)
-    return NULL;
+  CHECK_NULL_(process->resident.data);
   process->sharemem.data = malloc(sizeof(process->sharemem.sharemem_type));
-  if (process->sharemem.data == NULL)
-    return NULL;
+  CHECK_NULL_(process->user.data);
   process->state.data = malloc(sizeof(process->state.state_type));
-  if (process->state.data == NULL)
-    return NULL;
+  CHECK_NULL_(process->state.data);
   process->cpu.data = malloc(sizeof(process->cpu.cpu_type));
-  if (process->cpu.data == NULL)
-    return NULL;
+  CHECK_NULL_(process->cpu.data);
   process->mem.data = malloc(sizeof(process->mem.mem_type));
-  if (process->mem.data == NULL)
-    return NULL;
+  CHECK_NULL_(process->mem.data);
   process->time.data = malloc(sizeof(process->time.time_type));
-  if (process->time.data == NULL)
-    return NULL;
+  CHECK_NULL_(process->time.data);
   process->command_path.data =
       malloc(sizeof((process->command_path.command_path_type)));
-  if (process->command_path.data == NULL)
-    return NULL;
+  CHECK_NULL_(process->command_path.data);
 
   strcpy(process->pid.format, PID_F);
   strcpy(process->name.format, NAME_F);
@@ -221,33 +185,6 @@ Process *InitProcess() {
   strcpy(process->command_path.format, COMMAND_PATH_F);
 
   return process;
-}
-
-/* Adds " " (empty space str) to [string] so its size matches [size]
- */
-static void MergeNeededSpace(char *string, const size_t size) {
-  size_t num_chars = GetNumOfDigits(STR_FLAG, string);
-  int16_t left_chars = size - num_chars;
-  if (left_chars <= 0)
-    return;
-  for (; left_chars > 0; --left_chars)
-    strcat(string, " ");
-}
-
-static void ClearProcessFormat(Process **process) {
-  strcpy((*process)->pid.format, "");
-  strcpy((*process)->name.format, "");
-  strcpy((*process)->user.format, "");
-  strcpy((*process)->priority.format, "");
-  strcpy((*process)->nice.format, "");
-  strcpy((*process)->virtualmem.format, "");
-  strcpy((*process)->resident.format, "");
-  strcpy((*process)->sharemem.format, "");
-  strcpy((*process)->state.format, "");
-  strcpy((*process)->cpu.format, "");
-  strcpy((*process)->mem.format, "");
-  strcpy((*process)->time.format, "");
-  strcpy((*process)->command_path.format, "");
 }
 
 /* Freeing all data in the [process] and itself
@@ -286,6 +223,7 @@ int GetProcessInfoFromFile(Process **process, const pid_t pid) {
   FILE *pid_file;
   if ((pid_file = fopen(path, "r")) == NULL) {
     ERR_SET(ERR_OPEN_FILE, WARNING);
+    FreeProcess(temp_process);
     return ERR_OPEN_FILE;
   }
   int throw = fscanf(
@@ -299,24 +237,19 @@ int GetProcessInfoFromFile(Process **process, const pid_t pid) {
       (uint64_t *)temp_process->virtualmem.data,
       (int64_t *)temp_process->resident.data);
 
-  DebugWriteStringInfo("the string infos of the string are : -> ");
-  DebugWriteStringInfo((char *)temp_process->name.data);
-  DebugWriteNumInfo(*(int64_t *)temp_process->resident.data);
+  *(time_t *)temp_process->time.data = utime + stime;
 
   if (throw == EOF) {
     ERR_SET(ERR_SCAN_FILE, WARNING);
-    FreeProcess(temp_process);
     fclose(pid_file);
+    FreeProcess(temp_process);
     return ERR_SCAN_FILE;
   }
-  *(time_t *)temp_process->time.data = utime + stime;
   if (GetUserFromUid(process_uid, (char *)temp_process->user.data) != SUCCESS) {
     fclose(pid_file);
     FreeProcess(temp_process);
     return ERR_UNKNOWN;
   }
-  DebugWriteStringInfo("the user string is -> ");
-  DebugWriteStringInfo((char *)temp_process->user.data);
   if (GetSharedMemSize((uint64_t *)temp_process->sharemem.data,
                        *(pid_t *)temp_process->pid.data) != SUCCESS) {
     fclose(pid_file);
@@ -338,19 +271,6 @@ int GetProcessInfoFromFile(Process **process, const pid_t pid) {
   }
   GetProcessRAMusage((float *)temp_process->mem.data,
                      *(uint64_t *)temp_process->resident.data);
-  ClearProcessFormat(process);
-  MergeNeededSpace((*process)->pid.format, PID_MAX);
-  MergeNeededSpace((*process)->name.format, NAME__MAX);
-  MergeNeededSpace((*process)->user.format, USER_MAX);
-  MergeNeededSpace((*process)->priority.format, PRI_MAX);
-  MergeNeededSpace((*process)->nice.format, NI_MAX);
-  MergeNeededSpace((*process)->virtualmem.format, VIRT_MAX);
-  MergeNeededSpace((*process)->resident.format, RES_MAX);
-  MergeNeededSpace((*process)->sharemem.format, SHR_MAX);
-  MergeNeededSpace((*process)->state.format, S_MAX);
-  MergeNeededSpace((*process)->cpu.format, CPU_MAX);
-  MergeNeededSpace((*process)->mem.format, MEM_MAX);
-  MergeNeededSpace((*process)->time.format, TIME_MAX);
 
   ProcessMemCpy(temp_process, process);
   fclose(pid_file);
@@ -362,35 +282,35 @@ int GetProcessInfoFromFile(Process **process, const pid_t pid) {
  * [win] window of the terminal
  */
 void PrintProcessItem(WINDOW *win, const Process process, const int at_y) {
-  int at_x = 0;
+  int at_x = 1;
   mvwprintw(win, at_y, at_x, process.pid.format, *(pid_t *)process.pid.data);
-  at_x = getcurx(win);
+  at_x += PID_MAX;
   mvwprintw(win, at_y, at_x, process.name.format, (char *)process.name.data);
-  at_x = getcurx(win);
+  at_x += NAME__MAX;
   mvwprintw(win, at_y, at_x, process.user.format, (char *)process.user.data);
-  at_x = getcurx(win);
+  at_x += USER_MAX;
   mvwprintw(win, at_y, at_x, process.priority.format,
             *(long *)process.priority.data);
-  at_x = getcurx(win);
+  at_x += PRI_MAX;
   mvwprintw(win, at_y, at_x, process.nice.format, *(long *)process.nice.data);
-  at_x = getcurx(win);
+  at_x += NI_MAX;
   mvwprintw(win, at_y, at_x, process.virtualmem.format,
             *(unsigned long *)process.virtualmem.data);
-  at_x = getcurx(win);
+  at_x += VIRT_MAX;
   mvwprintw(win, at_y, at_x, process.resident.format,
             *(long *)process.resident.data);
-  at_x = getcurx(win);
+  at_x += RES_MAX;
   mvwprintw(win, at_y, at_x, process.sharemem.format,
             *(unsigned *)process.sharemem.data);
-  at_x = getcurx(win);
+  at_x += SHR_MAX;
   mvwprintw(win, at_y, at_x, process.state.format, *(char *)process.state.data);
-  at_x = getcurx(win);
+  at_x += S_MAX;
   mvwprintw(win, at_y, at_x, process.cpu.format, *(float *)process.cpu.data);
-  at_x = getcurx(win);
+  at_x += CPU_MAX;
   mvwprintw(win, at_y, at_x, process.mem.format, *(float *)process.mem.data);
-  at_x = getcurx(win);
+  at_x += MEM_MAX;
   mvwprintw(win, at_y, at_x, process.time.format, *(long *)process.time.data);
-  at_x = getcurx(win);
+  at_x += TIME_MAX;
   mvwprintw(win, at_y, at_x, process.command_path.format,
             (char *)process.command_path.data);
 }

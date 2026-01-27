@@ -27,6 +27,13 @@
 #define CMD_PATH_SIZE 64
 #define FORMAT_SIZE 32
 
+#define CHECK_NULL_(data)                                                      \
+  do {                                                                         \
+    if ((data) == NULL) {                                                      \
+      return NULL;                                                             \
+    }                                                                          \
+  } while (0)
+
 typedef enum TableHeaderElementsMarginEnum {
   PID_MARG = 4,
   NAME_MARG = 18,
@@ -34,7 +41,7 @@ typedef enum TableHeaderElementsMarginEnum {
   PRI_MARG = 2,
   NI_MARG = 1,
   VIRT_MARG = 8,
-  RES_MARG = 4,
+  RES_MARG = 5,
   SHR_MARG = 4,
   S_MARG = 1,
   CPU_MARG = 2,
@@ -66,7 +73,7 @@ typedef enum MaxTableElementsEnum {
   PRI_MAX = PRI_MARG + strlen("PRI"),
   NI_MAX = NI_MARG + strlen("NI"),
   VIRT_MAX = VIRT_MARG + strlen("VIRT"),
-  RES_MAX = RES_MARG + 1 + strlen("RES"),
+  RES_MAX = RES_MARG + strlen("RES"),
   SHR_MAX = SHR_MARG + strlen("SHR"),
   S_MAX = S_MARG + strlen("S"),
   CPU_MAX = CPU_MARG + strlen("CPU%"),

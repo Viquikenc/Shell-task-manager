@@ -9,7 +9,7 @@ void write_log(char message[MSG_MAX]) {
   fprintf(err_file, "%s\n", message);
 }
 
-int err_set(err_enum err_code, flag_t flag, const char *file, uint64_t line) {
+int err_set(err_enum err_code, flag_t flag, const char *file, const char* func, uint64_t line) {
   char message[MSG_MAX] = {0};
   if ((flag & FATAL) || (flag & WARNING))
     switch (err_code) {
@@ -17,39 +17,39 @@ int err_set(err_enum err_code, flag_t flag, const char *file, uint64_t line) {
       break;
     case ERR_OPEN_FILE:
       snprintf(message, MSG_MAX - 1,
-               "%s:[%s] Error in [%lu] Opening File Failed\n-->%s",
-               (flag | WARNING) ? "WARNING" : "FATAL", file, line,
+               "%s: %s Error in [%s] line %lu - Opening File Failed\n-->%s",
+               (flag | WARNING) ? "WARNING" : "FATAL", file, func, line,
                strerror(errno));
       write_log(message);
       break;
     case ERR_SCAN_FILE:
       snprintf(
-          message, 255, "%s:[%s] Error in [%lu] Scaning File Failed\n-->%s",
-          (flag | WARNING) ? "WARNING" : "FATAL", file, line, strerror(errno));
+          message, 255, "%s: %s Error in [%s] line %lu - Scaning File Failed\n-->%s",
+          (flag | WARNING) ? "WARNING" : "FATAL", file, func, line, strerror(errno));
       write_log(message);
       break;
     case ERR_READ_FILE:
       snprintf(
-          message, 255, "%s:[%s] Error in [%lu] Reading File Failed\n-->%s",
-          (flag | WARNING) ? "WARNING" : "FATAL", file, line, strerror(errno));
+          message, 255, "%s: %s Error in [%s] line %lu - Reading File Failed\n-->%s",
+          (flag | WARNING) ? "WARNING" : "FATAL", file, func, line, strerror(errno));
       write_log(message);
       break;
     case ERR_PERMMISSION_DENIED:
-      snprintf(message, 255, "%s:[%s] Error in [%lu] Permission Denied\n-->%s",
-               (flag | WARNING) ? "WARNING" : "FATAL", file, line,
+      snprintf(message, 255, "%s: %s] Error in [%s] line %lu - Permission Denied\n-->%s",
+               (flag | WARNING) ? "WARNING" : "FATAL", file, func, line,
                strerror(errno));
       write_log(message);
       break;
     case ERR_NOT_EXIST_FILE:
       snprintf(message, 255,
-               "%s:[%s] Error in [%lu] File or Directory Does Not Exist\n-->%s",
-               (flag | WARNING) ? "WARNING" : "FATAL", file, line,
+               "%s: %s Error in [%s] line %lu - File or Directory Does Not Exist\n-->%s",
+               (flag | WARNING) ? "WARNING" : "FATAL", file, func, line,
                strerror(errno));
       write_log(message);
       break;
     default:
-      snprintf(message, 255, "%s:[%s] Unknown Error [%lu] | %s\n",
-               (flag | WARNING) ? "WARNING" : "FATAL", file, line,
+      snprintf(message, 255, "%s: %s Unknown Error in [%s] line %lu\n-->%s",
+               (flag | WARNING) ? "WARNING" : "FATAL", file, func, line,
                strerror(errno));
       write_log(message);
       break;
