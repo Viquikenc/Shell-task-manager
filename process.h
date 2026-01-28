@@ -141,8 +141,6 @@ typedef struct Process {
   ProcStatProperties command_path; // string
 } Process;
 
-int GetUserFromUid(const pid_t uid, char user[USER_SIZE]);
-
 int GetProcessInfoFromFile(Process **, const pid_t pid);
 
 void ProcessMemCpy(Process *from, Process **to);
@@ -152,8 +150,5 @@ Process *InitProcess();
 void FreeProcess(Process *);
 
 void PrintProcessItem(WINDOW *, const Process, const int at_y);
-
-void CreateProcessItem(Process ProccessElement, const int print_y,
-                       const int print_x);
 
 #endif
