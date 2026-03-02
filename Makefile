@@ -3,9 +3,11 @@ CFLAGS=-lncurses -g
 CWARN=-Wall -Werror -Wpedantic
 
 main: main.c
-	$(CC) main.c Menu.c error_handler.c Debug.c -o main $(CFLAGS) $(CWARN)
+	$(CC) main.c process.c error_handler.c Debug.c tui_menu.c -o main $(CFLAGS) $(CWARN)
 noped:
-	$(CC) main.c Menu.c error_handler.c Debug.c -o main $(CFLAGS) -Wall -Werror
+	$(CC) main.c process.c error_handler.c Debug.c tui_menu.c -o main $(CFLAGS) -Wall -Werror
+O3:
+	$(CC) -O3 main.c process.c error_handler.c Debug.c tui_menu.c -o main $(CFLAGS)
 
 clean:
 	rm -f main
