@@ -9,14 +9,15 @@
 #include <ncurses.h>
 #include <pthread.h>
 #include <signal.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
+#include "Debug.h"
 #include "error_handler.h"
 #include "process.h"
+#include "tui_menu.h"
 
 #define BASE_10 10
 
@@ -25,12 +26,17 @@ FILE *err_file;
 uint64_t total_mem;
 
 static WINDOW *info_win = NULL;
+static WINDOW *temp_win = NULL;
 
 static Process *process = NULL;
 
+static Menu info_menu;
+
+static pthread_mutex_t mutex_lock;
+
 static void *KeyHandler(void *);
 static void SignalHandler(int);
-static inline int initInfo(uint64_t *);
+static int initInfo(uint64_t *);
 
 static int yMax;
 static int xMax;
@@ -40,7 +46,7 @@ static int print_y = 0;
 static int max_elements = 0;
 
 static int cursor_x = 0;
-static int cursor_y = 0;
+// static int cursor_y = 0;
 
 static int cam_y = 0;
 
@@ -65,30 +71,46 @@ static TableHeaderElementStruct TableList[MAX] = {
 
 int main(void) {
   err_file = fopen("errors.log", "a");
+  pid_t pid = 0;
+  DIR *dir = NULL;
+  struct dirent *pid_dir = NULL;
   initscr();
   cbreak();
   noecho();
   getmaxyx(stdscr, yMax, xMax);
   PAD_X = COLS - 1;
   PAD_Y = LINES - 1;
-  // initialising new pad ( more flexiable window )
+  /* this is a temp window for holding data in writing-time and it's made for
+   * not interepting the the UI win and let the user see real-time responses
+   */
+  temp_win = newpad(PAD_Y + 100, PAD_X + 50);
+  /* this is the displayed window which the data will be displayed at */
   info_win = newpad(PAD_Y + 100, PAD_X + 50);
   prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
   initInfo(&total_mem);
 
   if ((process = InitProcess()) == NULL) {
     delwin(info_win);
+    delwin(temp_win);
     delwin(stdscr);
     FreeProcess(process);
     endwin();
     fclose(err_file);
-    exit(1);
+    ERR_SET(ERR_PROCESS_INIT_FAIL, FATAL);
   }
 
   // enabling keys like (up-arrow, down-arrow, F1, F2, ...)
   keypad(info_win, TRUE);
   signal(SIGINT, SignalHandler);
   signal(SIGSEGV, SignalHandler);
+  MenuSet(&info_menu, 3 * getmaxy(stdscr) / 4, max_elements, info_win);
+  DebugWriteStringInfo("Maximum valid line in stdscr is");
+  DebugWriteNumInfo(getmaxy(stdscr));
+  DebugWriteNumInfo(getmaxx(stdscr));
+  DebugWriteStringInfo("Maximium valid line in the sub-window is");
+  DebugWriteNumInfo(getmaxy(info_win));
+  DebugWriteNumInfo(getmaxx(info_win));
+  pthread_mutex_init(&mutex_lock, NULL);
   pthread_t pthread;
   pthread_create(&pthread, NULL, KeyHandler, NULL);
   pthread_detach(pthread);
@@ -97,10 +119,9 @@ int main(void) {
     print_y = 0;
     max_elements = 0;
     // erasing the content of the [info_win]
-    werase(info_win);
-    pid_t pid = 1;
-    DIR *dir = opendir("/proc");
-    struct dirent *pid_dir;
+    werase(temp_win);
+    dir = opendir("/proc");
+    pid_dir = NULL;
     // reading every directory/file names in /proc
     while ((pid_dir = readdir(dir))) {
       pid = strtol(pid_dir->d_name, NULL, BASE_10);
@@ -108,73 +129,68 @@ int main(void) {
         continue;
       if (GetProcessInfoFromFile(&process, pid) != SUCCESS)
         continue;
-      PrintProcessItem(info_win, *process, print_y++);
+      PrintProcessItem(temp_win, *process, print_y++);
       ++max_elements;
     }
     closedir(dir);
-    // moving the cursor to a certain pos according to [cursor_y] & [cursor_x]
-    wmove(info_win, cursor_y, cursor_x);
+    pthread_mutex_lock(&mutex_lock);
+    /* overwriting(updating) the data stored in [temp_win] to the actual
+     * displayed screen [info_win] */
+    if (overwrite(temp_win, info_win) == ERR)
+      ERR_SET(ERR_WIN_OVERWRITE_FAIL, FATAL);
+    MenuUpdate(&info_menu, DCI, max_elements);
+    // moving the cursor to a certain pos according to [cursor_y] &
+    // [cursor_x]
+    wmove(info_win, info_menu.item_selected_ypos, cursor_x);
     // refreshing the content of the pad
-    prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
-    sleep(2);
+    prefresh(info_win, cam_y, 0, yMax / 4, 0, getmaxy(stdscr) - 1,
+             getmaxx(stdscr) - 1);
+    pthread_mutex_unlock(&mutex_lock);
+    DebugWriteStringInfo("Maximum valid line in stdscr is");
+    DebugWriteNumInfo(getmaxy(stdscr));
+    DebugWriteNumInfo(getmaxx(stdscr));
+    DebugWriteStringInfo("Maximium valid line in the sub-window is");
+    DebugWriteNumInfo(getmaxy(info_win));
+    DebugWriteNumInfo(getmaxx(info_win));
+    sleep(3);
   }
-  // freeing ncurses (but still many allocated data that's not freed by ncurses
-  // and I can't free it)
+  // freeing ncurses
+  /* WARNING: there still many remaining allocated data that's not freed by
+   * ncurses and I can't free it */
   endwin();
   return 0;
 }
 
 static void *KeyHandler(void *arg) {
-  int max_y = getmaxy(stdscr) - (yMax / 4);
-  int min_y = 0;
   while (1) {
     int key = getch();
     if (key == 'q') {
       delwin(info_win);
+      delwin(temp_win);
       delwin(stdscr);
-      FreeProcess(process);
       endwin();
+      FreeProcess(process);
+      pthread_mutex_destroy(&mutex_lock);
       fclose(err_file);
       exit(0);
     } else if (key == 'j') {
-      if ((++cursor_y) >= max_y) {
-        if (cursor_y < max_elements) {
-          ++min_y, ++max_y;
-          wmove(info_win, cursor_y, cursor_x);
-          prefresh(info_win, ++cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
-        } else {
-          wmove(info_win, --cursor_y, cursor_x);
-          prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
-        }
-      } else {
-        wmove(info_win, cursor_y, cursor_x);
-        prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
-      }
+      pthread_mutex_lock(&mutex_lock);
+      MenuSelectNext(&info_menu);
+      pthread_mutex_unlock(&mutex_lock);
     } else if (key == 'k') {
-      if ((--cursor_y) < min_y) {
-        min_y -= (min_y <= 0) ? 0 : 1;
-        max_y -= (max_y < (getmaxy(stdscr) - (yMax / 4))) ? 0 : 1;
-        cursor_y = (cursor_y < 0) ? 0 : cursor_y;
-        wmove(info_win, cursor_y, 0);
-        prefresh(info_win, --cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
-      } else {
-        wmove(info_win, cursor_y, 0);
-        prefresh(info_win, cam_y, 0, yMax / 4, 0, PAD_Y, PAD_X);
-      }
+      pthread_mutex_lock(&mutex_lock);
+      MenuSelectPrev(&info_menu);
+      pthread_mutex_unlock(&mutex_lock);
     }
   }
 }
 
 static int initInfo(uint64_t *total_mem) {
   FILE *mem_file = fopen("/proc/meminfo", "r");
-  if (mem_file == NULL) {
-    ERR_SET(ERR_OPEN_FILE, FATAL);
-    return ERR_OPEN_FILE;
-  }
-  if (fscanf(mem_file, "%*s %lu", total_mem) == EOF) {
-    ERR_SET(ERR_SCAN_FILE, FATAL);
-    return ERR_SCAN_FILE;
-  }
+  if (mem_file == NULL)
+    ERR_SET(ERR_FILE_OPEN_FAIL, FATAL);
+  if (fscanf(mem_file, "%*s %lu", total_mem) == EOF)
+    ERR_SET(ERR_FILE_SCAN_FAIL, FATAL);
   for (int i = 0, current_pos = 1; i < MAX;
        current_pos += TableList[i].str_size + TableList[i].margin, ++i)
     mvprintw(yMax / 4 - 1, current_pos, "%s", TableList[i].name);
@@ -188,8 +204,9 @@ static int initInfo(uint64_t *total_mem) {
 static void SignalHandler(int signal) {
   delwin(info_win);
   delwin(stdscr);
-  FreeProcess(process);
   endwin();
+  FreeProcess(process);
+  pthread_mutex_destroy(&mutex_lock);
   fclose(err_file);
   puts("The program has been interepted");
   exit(1);

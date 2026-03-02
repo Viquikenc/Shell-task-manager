@@ -27,13 +27,6 @@
 #define CMD_PATH_SIZE 64
 #define FORMAT_SIZE 32
 
-#define CHECK_NULL_(data)                                                      \
-  do {                                                                         \
-    if ((data) == NULL) {                                                      \
-      return NULL;                                                             \
-    }                                                                          \
-  } while (0)
-
 typedef enum TableHeaderElementsMarginEnum {
   PID_MARG = 4,
   NAME_MARG = 18,

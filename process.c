@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "Debug.h"
 #include "error_handler.h"
 #include "process.h"
 
@@ -34,13 +35,13 @@ static int GetSharedMemSize(unsigned long *sharedmem, const pid_t process_id) {
   FILE *file;
   (void)snprintf(path, sizeof(path), "/proc/%d/statm", process_id);
   if ((file = fopen(path, "r")) == NULL) {
-    ERR_SET(ERR_OPEN_FILE, WARNING);
-    return ERR_OPEN_FILE;
+    ERR_SET(ERR_FILE_OPEN_FAIL, IGNORED);
+    return ERR_FILE_OPEN_FAIL;
   }
   if (fscanf(file, "%*d %*d %lu", sharedmem) == EOF) {
-    ERR_SET(ERR_SCAN_FILE, WARNING);
+    ERR_SET(ERR_FILE_SCAN_FAIL, IGNORED);
     fclose(file);
-    return ERR_SCAN_FILE;
+    return ERR_FILE_SCAN_FAIL;
   }
   fclose(file);
   return SUCCESS;
@@ -59,17 +60,16 @@ static int GetProcessCPUusage(float *cpu_usage, const time_t utime,
   float uptime = 0.0;
   const int64_t Hertz = sysconf(_SC_CLK_TCK);
   uint64_t total_time = cutime + cstime + utime + stime;
-  if ((file = fopen("/proc/uptime", "r")) != NULL) {
-    if (fscanf(file, "%f", &uptime) == EOF) {
-      fclose(file);
-      ERR_SET(ERR_SCAN_FILE, WARNING);
-      return ERR_SCAN_FILE;
-    }
-    fclose(file);
-  } else {
-    ERR_SET(ERR_OPEN_FILE, WARNING);
-    return ERR_OPEN_FILE;
+  if ((file = fopen("/proc/uptime", "r")) == NULL) {
+    ERR_SET(ERR_FILE_OPEN_FAIL, WARNING);
+    return ERR_FILE_OPEN_FAIL;
   }
+  if (fscanf(file, "%f", &uptime) == EOF) {
+    fclose(file);
+    ERR_SET(ERR_FILE_SCAN_FAIL, WARNING);
+    return ERR_FILE_SCAN_FAIL;
+  }
+  fclose(file);
   float seconds = uptime - ((float)starttime / (float)Hertz);
   *cpu_usage = 100 * (((float)total_time / (float)Hertz) / (float)seconds);
   return SUCCESS;
@@ -89,17 +89,16 @@ static int GetProcessFullExcutable(const pid_t pid, char *exe_path) {
   }
   size_t readed_bytes =
       fread(process_path, 1, sizeof(process_path), process_path_cmd);
-  if (readed_bytes > 0) {
-    for (size_t i = 0; i < readed_bytes; i++)
-      exe_path[i] = (process_path[i] == '\0') ? ' ' : process_path[i];
-    exe_path[readed_bytes] = '\0';
+  if (readed_bytes <= 0) {
     fclose(process_path_cmd);
-    return SUCCESS;
-  } else {
-    fclose(process_path_cmd);
-    ERR_SET(ERR_UNKNOWN, WARNING);
+    ERR_SET(ERR_UNKNOWN, IGNORED);
     return ERR_UNKNOWN;
   }
+  for (size_t i = 0; i < readed_bytes; i++)
+    exe_path[i] = (process_path[i] == '\0') ? ' ' : process_path[i];
+  exe_path[readed_bytes] = '\0';
+  fclose(process_path_cmd);
+  return SUCCESS;
 }
 
 /* Calculating how much ram has been used by a process from its [resident] and
@@ -140,35 +139,35 @@ void ProcessMemCpy(Process *from, Process **to) {
  */
 Process *InitProcess() {
   Process *process = malloc(sizeof(Process));
-  CHECK_NULL_(process);
+  _CHECK_NULL_(process);
   process->pid.data = malloc(sizeof(process->pid.pid_type));
-  CHECK_NULL_(process->pid.data);
+  _CHECK_NULL_(process->pid.data);
   process->name.data = malloc(sizeof(process->name.name_type));
-  CHECK_NULL_(process->name.data);
+  _CHECK_NULL_(process->name.data);
   process->user.data = malloc(sizeof(process->user.user_type));
-  CHECK_NULL_(process->user.data);
+  _CHECK_NULL_(process->user.data);
   process->priority.data = malloc(sizeof(process->priority.priority_type));
-  CHECK_NULL_(process->priority.data);
+  _CHECK_NULL_(process->priority.data);
   process->nice.data = malloc(sizeof(process->nice.nice_type));
-  CHECK_NULL_(process->nice.data);
+  _CHECK_NULL_(process->nice.data);
   process->virtualmem.data =
       malloc(sizeof(process->virtualmem.virtualmem_type));
-  CHECK_NULL_(process->virtualmem.data);
+  _CHECK_NULL_(process->virtualmem.data);
   process->resident.data = malloc(sizeof(process->resident.resident_type));
-  CHECK_NULL_(process->resident.data);
+  _CHECK_NULL_(process->resident.data);
   process->sharemem.data = malloc(sizeof(process->sharemem.sharemem_type));
-  CHECK_NULL_(process->user.data);
+  _CHECK_NULL_(process->user.data);
   process->state.data = malloc(sizeof(process->state.state_type));
-  CHECK_NULL_(process->state.data);
+  _CHECK_NULL_(process->state.data);
   process->cpu.data = malloc(sizeof(process->cpu.cpu_type));
-  CHECK_NULL_(process->cpu.data);
+  _CHECK_NULL_(process->cpu.data);
   process->mem.data = malloc(sizeof(process->mem.mem_type));
-  CHECK_NULL_(process->mem.data);
+  _CHECK_NULL_(process->mem.data);
   process->time.data = malloc(sizeof(process->time.time_type));
-  CHECK_NULL_(process->time.data);
+  _CHECK_NULL_(process->time.data);
   process->command_path.data =
       malloc(sizeof((process->command_path.command_path_type)));
-  CHECK_NULL_(process->command_path.data);
+  _CHECK_NULL_(process->command_path.data);
 
   strcpy(process->pid.format, PID_F);
   strcpy(process->name.format, NAME_F);
@@ -222,9 +221,9 @@ int GetProcessInfoFromFile(Process **process, const pid_t pid) {
   (void)snprintf(path, sizeof(path), "/proc/%d/stat", pid);
   FILE *pid_file;
   if ((pid_file = fopen(path, "r")) == NULL) {
-    ERR_SET(ERR_OPEN_FILE, WARNING);
+    ERR_SET(ERR_FILE_OPEN_FAIL, WARNING);
     FreeProcess(temp_process);
-    return ERR_OPEN_FILE;
+    return ERR_FILE_OPEN_FAIL;
   }
   int throw = fscanf(
       pid_file,
@@ -238,12 +237,13 @@ int GetProcessInfoFromFile(Process **process, const pid_t pid) {
       (int64_t *)temp_process->resident.data);
 
   *(time_t *)temp_process->time.data = utime + stime;
-
+  while (*(uint64_t *)temp_process->virtualmem.data >= 1024)
+    *(uint64_t *)temp_process->virtualmem.data /= 1024;
   if (throw == EOF) {
-    ERR_SET(ERR_SCAN_FILE, WARNING);
+    ERR_SET(ERR_FILE_SCAN_FAIL, WARNING);
     fclose(pid_file);
     FreeProcess(temp_process);
-    return ERR_SCAN_FILE;
+    return ERR_FILE_SCAN_FAIL;
   }
   if (GetUserFromUid(process_uid, (char *)temp_process->user.data) != SUCCESS) {
     fclose(pid_file);
@@ -272,6 +272,15 @@ int GetProcessInfoFromFile(Process **process, const pid_t pid) {
   GetProcessRAMusage((float *)temp_process->mem.data,
                      *(uint64_t *)temp_process->resident.data);
 
+  DebugWriteStringInfo("Virtual mem: ---------");
+  DebugWriteNumInfo(*(long *)temp_process->virtualmem.data);
+  DebugWriteStringInfo("Nice Value: ---------");
+  DebugWriteNumInfo(*(long *)temp_process->nice.data);
+  DebugWriteStringInfo("Priority Value: ---------");
+  DebugWriteNumInfo(*(long *)temp_process->priority.data);
+  DebugWriteStringInfo("Resident Value: ---------");
+  DebugWriteNumInfo(*(long *)temp_process->resident.data);
+  DebugWriteStringInfo("################################");
   ProcessMemCpy(temp_process, process);
   fclose(pid_file);
   FreeProcess(temp_process);
